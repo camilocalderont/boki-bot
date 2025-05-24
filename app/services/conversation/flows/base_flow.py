@@ -7,11 +7,12 @@ class BaseFlow(ABC):
     """
 
     @abstractmethod
-    async def process_message(self, phone_number: str, message_text: str, conversation_state: dict):
+    async def process_message(self, contact_id: str, phone_number: str, message_text: str, conversation_state: dict):
         """
         Procesa un mensaje dentro del flujo y actualiza el estado de la conversación.
 
         Args:
+            contact_id: ID del contacto en MongoDB.
             phone_number: Número de teléfono del usuario.
             message_text: Texto del mensaje recibido.
             conversation_state: Estado actual de la conversación.

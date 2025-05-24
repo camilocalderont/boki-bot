@@ -38,6 +38,7 @@ async def receive_update(payload: WebhookPayload):
 
         # Extraer información del mensaje
         from_number = message.from_
+        message_id = message.id
 
         # Extraer el contenido según el tipo de mensaje
         message_text = ""
@@ -48,12 +49,14 @@ async def receive_update(payload: WebhookPayload):
             message_text = f"[Se recibió un {message.type}]"
 
         # Procesar el mensaje a través del gestor de conversaciones
-        response_text = await conversation_manager.process_message(from_number, message_text)
+        response_text = await conversation_manager.process_message(from_number, message_text, message_id)
 
-        # Enviar respuesta
-        await WhatsAppClient().send_text(from_number, response_text)
-
-        return {"status": "processed"}
+        # Enviar respuesta solo si hay una respuesta que enviar
+        if response_text:
+            await WhatsAppClient().send_text(from_number, response_text)
+            return {"status": "processed"}
+        else:
+            return {"status": "ignored_duplicate"}
 
     except WhatsAppAPIError as exc:
         logger.warning("Fallo al enviar mensaje WA: %s", exc)

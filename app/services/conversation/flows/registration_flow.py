@@ -3,6 +3,8 @@ from app.services.conversation.flows.base_flow import BaseFlow
 from app.services.boki_api import BokiApi, BokiApiError
 from app.models.client import ClientCreate
 from pydantic import ValidationError
+from typing import Tuple
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -10,78 +12,116 @@ class RegistrationFlow(BaseFlow):
     """Implementa el flujo de registro de usuario."""
 
     def __init__(self):
-        self.nestjs_client = BokiApi()
+        self.boki_api = BokiApi()
 
-    async def process_message(self, phone_number: str, message_text: str, conversation_state: dict):
-        """
-        Procesa los mensajes dentro del flujo de registro.
-
-        El flujo pasa por los siguientes pasos:
-        1. Solicitar ID
-        2. Solicitar nombre
-        3. Registrar
-        """
-        # Si es la primera vez, inicializar el estado
-        if "step" not in conversation_state:
-            conversation_state["step"] = "waiting_id"
-            conversation_state["data"] = {}
-
-        current_step = conversation_state["step"]
-        data = conversation_state["data"]
-
-        # Proceso según el paso actual
+    async def process_message(self, state: dict, message: str, contact_id: str) -> Tuple[dict, str, bool]:
+        """Procesa un mensaje en el flujo de registro."""
+        
+        current_step = state.get("step")
+        data = state.get("data", {})
+        
+        
         if current_step == "waiting_id":
-            # Validar ID
-            id_number = message_text.strip()
-            if not id_number:
-                return "Por favor, proporciona un número de documento válido:", conversation_state, False
-
-            # Guardar ID y avanzar al siguiente paso
-            data["VcIdentificationNumber"] = id_number
-            conversation_state["step"] = "waiting_name"
-
-            return "Gracias. Ahora, por favor proporciona tu nombre completo:", conversation_state, False
-
+            # Validar ID mínimo 5 caracteres
+            if len(message.strip()) < 5:
+                return state, "El número de documento debe tener al menos 5 caracteres. Por favor, proporciona un documento válido:", False
+            
+            # Guardar ID del documento
+            data["VcIdentificationNumber"] = message.strip()
+            
+            new_state = {
+                "step": "waiting_name",
+                "data": data
+            }
+            return new_state, "Gracias. Ahora, por favor proporciona tu **nombre completo**:", False
+            
         elif current_step == "waiting_name":
-            # Validar nombre
-            name = message_text.strip()
-            if not name:
-                return "Por favor, proporciona un nombre válido:", conversation_state, False
-
-            # Guardar nombre y preparar registro
-            data["VcFirstName"] = name
-            data["VcPhone"] = phone_number
-
-            # Intentar registrar al usuario
+            # Validar nombre mínimo 2 caracteres
+            if len(message.strip()) < 2:
+                return state, "El nombre completo debe tener al menos 2 caracteres. Por favor, proporciona tu nombre completo:", False
+            
+            # Dividir nombre completo en primer y segundo nombre
+            nombres = message.strip().split()
+            if len(nombres) >= 1:
+                data["VcFirstName"] = nombres[0]
+                data["VcSecondName"] = nombres[1] if len(nombres) >= 2 else None
+                # Usar el primer nombre como nickname
+                data["vcNickName"] = nombres[0]
+                
+            
+            new_state = {
+                "step": "waiting_lastname", 
+                "data": data
+            }
+            return new_state, "Perfecto. Ahora proporciona tus **apellidos completos**:", False
+            
+        elif current_step == "waiting_lastname":
+            # Validar apellidos mínimo 2 caracteres
+            if len(message.strip()) < 2:
+                return state, "Los apellidos deben tener al menos 2 caracteres. Por favor, proporciona tus apellidos completos:", False
+            
+            # Dividir apellidos en primer y segundo apellido
+            apellidos = message.strip().split()
+            if len(apellidos) >= 1:
+                data["VcFirstLastName"] = apellidos[0]
+                data["VcSecondLastName"] = apellidos[1] if len(apellidos) >= 2 else None
+                
+            
+            new_state = {
+                "step": "waiting_email",
+                "data": data
+            }
+            return new_state, "Excelente. Por último, proporciona tu **email**:", False
+            
+        elif current_step == "waiting_email":
+            # Validar formato de email básico
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_pattern, message.strip()):
+                return state, "Por favor, proporciona un email válido (ejemplo: usuario@gmail.com):", False
+            
+            # Guardar email
+            data["VcEmail"] = message.strip()
+            phone = data["VcPhone"]
+            
+            # Preparar datos completos para crear cliente
+            client_data = {
+                "VcIdentificationNumber": data["VcIdentificationNumber"],
+                "VcPhone": data["VcPhone"],
+                "vcNickName": data["vcNickName"],
+                "VcFirstName": data["VcFirstName"], 
+                "VcSecondName": data["VcSecondName"],
+                "VcFirstLastName": data["VcFirstLastName"],
+                "VcSecondLastName": data["VcSecondLastName"],
+                "VcEmail": data["VcEmail"]
+            }
+            
             try:
-                # Validar datos con Pydantic
-                client_data = ClientCreate(**data)
-
-                # Crear cliente en la API
-                await self.nestjs_client.create_client(client_data.dict())
-
-                # Flujo completado exitosamente
-                return (
-                    "¡Registro exitoso! Bienvenido a nuestro servicio. "
-                    "¿En qué podemos ayudarte hoy? Puedes hacer preguntas o agendar una cita.",
-                    {}, True  # Limpiar estado y marcar como completado
-                )
-
+                # Validar datos con Pydantic antes de enviar
+                client_model = ClientCreate(**client_data)
+                
+                # Crear cliente en PostgreSQL
+                result = await self.boki_api.create_client(client_data)
+                
+                if result:
+                    return {}, f"¡Registro completado exitosamente! 🎉 Bienvenido/a {data['VcFirstName']} {data['VcFirstLastName']}, tu cuenta ha sido creada correctamente.", True
+                else:
+                    logger.error(f"[REGISTRO] Error creando cliente")
+                    # Reiniciar flujo en caso de error
+                    new_state = {"step": "waiting_id", "data": {"phone": phone}}
+                    return new_state, "Hubo un error al procesar tu registro. Por favor, intenta nuevamente. Proporciona tu número de documento:", False
+                    
             except ValidationError as e:
-                logger.error(f"Error de validación: {str(e)}")
-                # Volver a solicitar datos
-                conversation_state["step"] = "waiting_id"
-                conversation_state["data"] = {}
-                return (
-                    "Los datos proporcionados no son válidos. Por favor, "
-                    "comencemos de nuevo. Proporciona tu número de documento:",
-                    conversation_state, False
-                )
-
-            except BokiApiError as e:
-                logger.error(f"Error al crear cliente: {str(e)}")
-                return (
-                    "Hubo un problema al registrar tus datos. Por favor, "
-                    "intenta nuevamente más tarde o contacta a soporte.",
-                    {}, True  # Terminar flujo con error
-                )
+                logger.error(f"[REGISTRO] Error de validación: {str(e)}")
+                # Reiniciar flujo en caso de error de validación
+                new_state = {"step": "waiting_id", "data": {"phone": phone}}
+                return new_state, "Los datos proporcionados no son válidos. Por favor, comencemos de nuevo. Proporciona tu número de documento:", False
+            except Exception as e:
+                logger.error(f"[REGISTRO] Error creando cliente: {str(e)}")
+                # Reiniciar flujo en caso de error general
+                new_state = {"step": "waiting_id", "data": {"phone": phone}}
+                return new_state, "Hubo un error al procesar tu registro. Por favor, intenta nuevamente. Proporciona tu número de documento:", False
+        
+        # Paso desconocido, reiniciar
+        logger.warning(f"[REGISTRO] Paso desconocido: {current_step}")
+        new_state = {"step": "waiting_id", "data": {"phone": data.get("phone", "")}}
+        return new_state, "Empecemos el proceso de registro. Proporciona tu número de documento:", False
