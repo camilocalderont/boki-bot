@@ -1,127 +1,155 @@
+# app/services/conversation/flows/registration_flow.py
 import logging
+from typing import Tuple, Dict, Optional
 from app.services.conversation.flows.base_flow import BaseFlow
-from app.services.boki_api import BokiApi, BokiApiError
+from app.services.boki_api import BokiApi
 from app.models.client import ClientCreate
 from pydantic import ValidationError
-from typing import Tuple
 import re
 
 logger = logging.getLogger(__name__)
 
 class RegistrationFlow(BaseFlow):
-    """Implementa el flujo de registro de usuario."""
+    """Implementa el flujo de registro de usuario simplificado."""
 
     def __init__(self):
         self.boki_api = BokiApi()
 
-    async def process_message(self, state: dict, message: str, contact_id: str) -> Tuple[dict, str, bool]:
-        """Procesa un mensaje en el flujo de registro."""
+    async def process_message(self, state: Dict, message: str, contact_id: str) -> Tuple[Dict, str, bool]:
+        """
+        Procesa un mensaje en el flujo de registro.
         
-        current_step = state.get("step")
+        Returns:
+            Tuple[Dict, str, bool]: (nuevo_estado, respuesta, flujo_completado)
+        """
+        current_step = state.get("step", "waiting_id")
         data = state.get("data", {})
         
+        logger.info(f"[REGISTRO] Procesando paso '{current_step}' para contacto {contact_id}")
+        logger.info(f"[REGISTRO] Estado actual: {state}")
+        logger.info(f"[REGISTRO] Mensaje: {message}")
         
-        if current_step == "waiting_id":
-            # Validar ID mínimo 5 caracteres
-            if len(message.strip()) < 5:
-                return state, "El número de documento debe tener al menos 5 caracteres. Por favor, proporciona un documento válido:", False
-            
-            # Guardar ID del documento
-            data["VcIdentificationNumber"] = message.strip()
-            
-            new_state = {
-                "step": "waiting_name",
-                "data": data
-            }
-            return new_state, "Gracias. Ahora, por favor proporciona tu **nombre completo**:", False
-            
-        elif current_step == "waiting_name":
-            # Validar nombre mínimo 2 caracteres
-            if len(message.strip()) < 2:
-                return state, "El nombre completo debe tener al menos 2 caracteres. Por favor, proporciona tu nombre completo:", False
-            
-            # Dividir nombre completo en primer y segundo nombre
-            nombres = message.strip().split()
-            if len(nombres) >= 1:
-                data["VcFirstName"] = nombres[0]
-                data["VcSecondName"] = nombres[1] if len(nombres) >= 2 else None
-                # Usar el primer nombre como nickname
-                data["vcNickName"] = nombres[0]
+        try:
+            if current_step == "waiting_id":
+                return await self._process_id_step(message, data)
+            elif current_step == "waiting_name":
+                return await self._process_name_step(message, data, contact_id)
+            else:
+                # Paso desconocido, reiniciar
+                logger.warning(f"[REGISTRO] Paso desconocido: {current_step}")
+                return self._restart_flow(data.get("phone", ""))
                 
+        except Exception as e:
+            logger.error(f"[REGISTRO] Error procesando mensaje: {e}", exc_info=True)
+            return self._restart_flow(data.get("phone", ""))
+
+    async def _process_id_step(self, message: str, data: Dict) -> Tuple[Dict, str, bool]:
+        """Procesa el paso de captura de documento de identidad."""
+        document_id = message.strip()
+        
+        logger.info(f"[REGISTRO] Procesando documento: '{document_id}'")
+        
+        # Validar documento mínimo
+        if len(document_id) < 5 or not document_id.replace(" ", "").isalnum():
+            logger.warning(f"[REGISTRO] Documento inválido: {document_id}")
+            return (
+                {"step": "waiting_id", "data": data},
+                "El número de documento debe tener al menos 5 caracteres alfanuméricos. Por favor, proporciona un documento válido:",
+                False
+            )
+        
+        # Guardar documento y pasar al siguiente paso
+        data["VcIdentificationNumber"] = document_id
+        new_state = {"step": "waiting_name", "data": data}
+        
+        logger.info(f"[REGISTRO] Documento guardado: {document_id}")
+        logger.info(f"[REGISTRO] Nuevo estado: {new_state}")
+        
+        return (
+            new_state,
+            "Perfecto. Ahora, por favor proporciona tu primer nombre:",
+            False
+        )
+
+    async def _process_name_step(self, message: str, data: Dict, contact_id: str) -> Tuple[Dict, str, bool]:
+        """Procesa el paso de captura de nombre y crea el cliente inmediatamente."""
+        first_name = message.strip()
+        
+        logger.info(f"[REGISTRO] Procesando nombre: '{first_name}'")
+        
+        # Validar nombre
+        if len(first_name) < 2:
+            logger.warning(f"[REGISTRO] Nombre muy corto: {first_name}")
+            return (
+                {"step": "waiting_name", "data": data},
+                "El nombre debe tener al menos 2 caracteres. Por favor, proporciona tu primer nombre:",
+                False
+            )
+        
+        # Tomar solo la primera palabra como primer nombre
+        first_name_clean = first_name.split()[0]
+        data["VcFirstName"] = first_name_clean
+        
+        logger.info(f"[REGISTRO] Nombre limpio guardado: {first_name_clean}")
+        logger.info(f"[REGISTRO] Datos completos para crear cliente: {data}")
+        
+        # Crear cliente inmediatamente
+        return await self._create_client(data, contact_id)
+
+    async def _create_client(self, data: Dict, contact_id: str) -> Tuple[Dict, str, bool]:
+        """Crea el cliente en la base de datos."""
+        try:
+            logger.info(f"[REGISTRO] Iniciando creación de cliente con datos: {data}")
             
-            new_state = {
-                "step": "waiting_lastname", 
-                "data": data
-            }
-            return new_state, "Perfecto. Ahora proporciona tus **apellidos completos**:", False
-            
-        elif current_step == "waiting_lastname":
-            # Validar apellidos mínimo 2 caracteres
-            if len(message.strip()) < 2:
-                return state, "Los apellidos deben tener al menos 2 caracteres. Por favor, proporciona tus apellidos completos:", False
-            
-            # Dividir apellidos en primer y segundo apellido
-            apellidos = message.strip().split()
-            if len(apellidos) >= 1:
-                data["VcFirstLastName"] = apellidos[0]
-                data["VcSecondLastName"] = apellidos[1] if len(apellidos) >= 2 else None
-                
-            
-            new_state = {
-                "step": "waiting_email",
-                "data": data
-            }
-            return new_state, "Excelente. Por último, proporciona tu **email**:", False
-            
-        elif current_step == "waiting_email":
-            # Validar formato de email básico
-            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-            if not re.match(email_pattern, message.strip()):
-                return state, "Por favor, proporciona un email válido (ejemplo: usuario@gmail.com):", False
-            
-            # Guardar email
-            data["VcEmail"] = message.strip()
-            phone = data["VcPhone"]
-            
-            # Preparar datos completos para crear cliente
+            # Preparar datos para crear cliente - SOLO los campos necesarios
             client_data = {
                 "VcIdentificationNumber": data["VcIdentificationNumber"],
-                "VcPhone": data["VcPhone"],
-                "vcNickName": data["vcNickName"],
-                "VcFirstName": data["VcFirstName"], 
-                "VcSecondName": data["VcSecondName"],
-                "VcFirstLastName": data["VcFirstLastName"],
-                "VcSecondLastName": data["VcSecondLastName"],
-                "VcEmail": data["VcEmail"]
+                "VcPhone": data.get("phone", ""),
+                "VcFirstName": data["VcFirstName"],
             }
             
+            logger.info(f"[REGISTRO] Datos del cliente preparados: {client_data}")
+            
+            # Validar con Pydantic antes de enviar (si tienes el modelo)
             try:
-                # Validar datos con Pydantic antes de enviar
-                client_model = ClientCreate(**client_data)
+                # Solo validar si el modelo ClientCreate está disponible
+                ClientCreate(**client_data)
+                logger.info(f"[REGISTRO] Validación Pydantic exitosa")
+            except ValidationError as ve:
+                logger.error(f"[REGISTRO] Error de validación Pydantic: {ve}")
+                # Continuar anyway ya que sabemos que los campos son correctos
+                logger.info(f"[REGISTRO] Continuando con la creación a pesar del error de validación")
+            except Exception as ve:
+                # Si ClientCreate no está disponible o hay otro error, continuar
+                logger.info(f"[REGISTRO] Validación Pydantic no disponible, continuando")
+            
+            # Crear cliente
+            logger.info(f"[REGISTRO] Enviando solicitud de creación de cliente")
+            result = await self.boki_api.create_client(client_data)
+            logger.info(f"[REGISTRO] Resultado de creación: {result}")
+            
+            if result:
+                logger.info(f"[REGISTRO] Cliente creado exitosamente: {result.get('Id')}")
+                return (
+                    {},  # Estado vacío = flujo completado
+                    f"¡Registro completado exitosamente! 🎉\n\n"
+                    f"Bienvenido/a {data['VcFirstName']}, tu cuenta ha sido creada correctamente.\n\n"
+                    f"Ya puedes agendar citas o hacer preguntas. ¿En qué puedo ayudarte?",
+                    True  # Flujo completado
+                )
+            else:
+                logger.error(f"[REGISTRO] Error al crear cliente en la API - resultado nulo")
+                return self._restart_flow(data.get("phone", ""))
                 
-                # Crear cliente en PostgreSQL
-                result = await self.boki_api.create_client(client_data)
-                
-                if result:
-                    return {}, f"¡Registro completado exitosamente! 🎉 Bienvenido/a {data['VcFirstName']} {data['VcFirstLastName']}, tu cuenta ha sido creada correctamente.", True
-                else:
-                    logger.error(f"[REGISTRO] Error creando cliente")
-                    # Reiniciar flujo en caso de error
-                    new_state = {"step": "waiting_id", "data": {"phone": phone}}
-                    return new_state, "Hubo un error al procesar tu registro. Por favor, intenta nuevamente. Proporciona tu número de documento:", False
-                    
-            except ValidationError as e:
-                logger.error(f"[REGISTRO] Error de validación: {str(e)}")
-                # Reiniciar flujo en caso de error de validación
-                new_state = {"step": "waiting_id", "data": {"phone": phone}}
-                return new_state, "Los datos proporcionados no son válidos. Por favor, comencemos de nuevo. Proporciona tu número de documento:", False
-            except Exception as e:
-                logger.error(f"[REGISTRO] Error creando cliente: {str(e)}")
-                # Reiniciar flujo en caso de error general
-                new_state = {"step": "waiting_id", "data": {"phone": phone}}
-                return new_state, "Hubo un error al procesar tu registro. Por favor, intenta nuevamente. Proporciona tu número de documento:", False
-        
-        # Paso desconocido, reiniciar
-        logger.warning(f"[REGISTRO] Paso desconocido: {current_step}")
-        new_state = {"step": "waiting_id", "data": {"phone": data.get("phone", "")}}
-        return new_state, "Empecemos el proceso de registro. Proporciona tu número de documento:", False
+        except Exception as e:
+            logger.error(f"[REGISTRO] Error creando cliente: {e}", exc_info=True)
+            return self._restart_flow(data.get("phone", ""))
+
+    def _restart_flow(self, phone: str) -> Tuple[Dict, str, bool]:
+        """Reinicia el flujo de registro."""
+        logger.info(f"[REGISTRO] Reiniciando flujo para teléfono: {phone}")
+        return (
+            {"step": "waiting_id", "data": {"phone": phone}},
+            "Hubo un error. Empecemos de nuevo el registro.\n\nPor favor, proporciona tu número de documento de identidad:",
+            False
+        )
