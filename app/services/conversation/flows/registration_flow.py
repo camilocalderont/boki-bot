@@ -139,6 +139,7 @@ class RegistrationFlow(BaseFlow):
 
             if result:
                 logger.info(f"[REGISTRO] Cliente creado exitosamente: {result.get('Id')}")
+                #Cerrar el flujo
                 return (
                     {},  # Estado vacío = flujo completado
                     f"¡Registro completado exitosamente! 🎉\n\n"

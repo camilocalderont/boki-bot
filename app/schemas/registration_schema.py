@@ -5,41 +5,56 @@ import re
 
 class DocumentSchema(BaseModel):
     """Schema para validar solo el documento de identidad"""
-    VcIdentificationNumber: str = Field(..., min_length=5)
+    VcIdentificationNumber: str
 
     @field_validator('VcIdentificationNumber')
     def validate_document_id(cls, v):
         v = v.strip()
+        if not v:
+            raise PydanticCustomError(
+                'document_missing',
+                'El número de documento es obligatorio'
+            )
         if len(v) < 5 or not v.isdigit():
             raise PydanticCustomError(
                 'document_invalid',
-                'El documento debe contener solo números y debe tener más de 5 dígitos'
+                'El documento debe contener sólo números y al menos 5 dígitos'
             )
         return v
 
 
 class NameSchema(BaseModel):
     """Schema para validar solo el nombre"""
-    VcFirstName: str = Field(..., min_length=2)
+    VcFirstName: str
 
     @field_validator('VcFirstName')
     def validate_first_name(cls, v):
         v = v.strip()
+        if not v:
+            raise PydanticCustomError(
+                'first_name_missing',
+                'El nombre es obligatorio'
+            )
         if len(v) < 2 or not re.match(r'^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$', v):
             raise PydanticCustomError(
                 'first_name_invalid',
-                'El nombre debe contener solo letras y debe ser mayor a 2 caracteres'
+                'El nombre debe contener solo letras'
             )
         return v
 
 
 class PhoneSchema(BaseModel):
     """Schema para validar solo el teléfono"""
-    VcPhone: str = Field(..., min_length=10, max_length=15)
+    VcPhone: str
 
     @field_validator('VcPhone')
     def validate_phone(cls, v):
         v = v.strip()
+        if not v:
+            raise PydanticCustomError(
+                'phone_missing',
+                'El número de teléfono es obligatorio'
+            )
         # Aceptar con o sin código de país
         if v.startswith('57'):
             if not re.match(r'^57(3|6)\d{9}$', v):
