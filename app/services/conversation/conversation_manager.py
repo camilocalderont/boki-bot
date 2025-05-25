@@ -20,7 +20,7 @@ class ConversationManager:
     def __init__(self):
         self.intent_detector = IntentDetector()
         self.boki_api = BokiApi()
-        
+
         # Inicializar flujos de conversación
         self.flows = {
             "registration": RegistrationFlow(),
@@ -33,50 +33,50 @@ class ConversationManager:
         """
         Procesa un mensaje entrante de forma simplificada.
         """
-        
+
         try:
             logger.info(f"[MANAGER] ===== INICIO PROCESAMIENTO =====")
             logger.info(f"[MANAGER] Teléfono: {phone_number}")
             logger.info(f"[MANAGER] Mensaje: {message_text}")
             logger.info(f"[MANAGER] ID: {message_id}")
-            
+
             # 1. Verificar duplicados
             if message_id and await self.boki_api.is_message_processed(message_id):
                 logger.warning(f"[MANAGER] Mensaje {message_id} ya procesado, ignorando")
                 return None
-            
+
             # 2. Obtener/crear contacto
             logger.info(f"[MANAGER] Obteniendo/creando contacto para {phone_number}")
             contact = await self.boki_api.get_or_create_contact(phone_number)
-            
+
             if not contact or not contact.get("_id"):
                 logger.error(f"[MANAGER] No se pudo obtener/crear contacto para {phone_number}")
                 logger.error(f"[MANAGER] Respuesta del contacto: {contact}")
                 return "Lo siento, hay un problema técnico. Intenta de nuevo más tarde."
-            
+
             contact_id = contact["_id"]
             logger.info(f"[MANAGER] Contacto obtenido: {contact_id}")
-            
+
             # 3. Verificar si es usuario registrado
             logger.info(f"[MANAGER] Verificando si usuario está registrado")
             client = await self.boki_api.get_client_by_phone(phone_number)
             is_registered = client is not None
             logger.info(f"[MANAGER] Usuario registrado: {is_registered}")
-            
+
             # 4. Obtener estado de conversación
             logger.info(f"[MANAGER] Obteniendo estado de conversación")
             conversation_state = await self.boki_api.get_conversation_state(contact_id)
             logger.info(f"[MANAGER] Estado actual: {conversation_state}")
-            
+
             # 5. Registrar mensaje entrante
             flow_context = self._extract_flow_context(conversation_state)
             logger.info(f"[MANAGER] Contexto de flujo: {flow_context}")
-            
+
             if message_id:
                 logger.info(f"[MANAGER] Registrando mensaje entrante")
                 success = await self.boki_api.log_incoming_message(contact_id, message_id, message_text, flow_context)
                 logger.info(f"[MANAGER] Mensaje entrante registrado: {success}")
-            
+
             # 6. Procesar mensaje
             logger.info(f"[MANAGER] Procesando mensaje")
             response = await self._route_message(
@@ -87,22 +87,22 @@ class ConversationManager:
                 conversation_state=conversation_state
             )
             logger.info(f"[MANAGER] Respuesta generada: {response[:100]}..." if response else "No hay respuesta")
-            
+
             # 7. Registrar respuesta
             if response and message_id:
                 response_id = f"bot_{uuid.uuid4().hex[:8]}"
-                
+
                 # Obtener contexto actualizado
                 updated_state = await self.boki_api.get_conversation_state(contact_id)
                 updated_context = self._extract_flow_context(updated_state)
-                
+
                 logger.info(f"[MANAGER] Registrando mensaje saliente")
                 success = await self.boki_api.log_outgoing_message(contact_id, response_id, response, updated_context)
                 logger.info(f"[MANAGER] Mensaje saliente registrado: {success}")
-            
+
             logger.info(f"[MANAGER] ===== FIN PROCESAMIENTO =====")
             return response
-            
+
         except Exception as e:
             logger.error(f"[MANAGER] Error procesando mensaje: {e}", exc_info=True)
             return "Lo siento, hubo un error procesando tu mensaje. Por favor intenta de nuevo."
@@ -111,23 +111,23 @@ class ConversationManager:
         """Extrae el contexto del flujo del estado de conversación."""
         if not conversation_state:
             return {"flow": "general", "step": "initial"}
-        
+
         # Manejar tanto estructura directa como con _doc
         state_data = conversation_state.get("_doc", conversation_state)
         flow = state_data.get("flow", "general")
         step = state_data.get("state", {}).get("step", "initial")
-        
+
         return {"flow": flow, "step": step}
 
-    async def _route_message(self, contact_id: str, phone_number: str, message_text: str, 
+    async def _route_message(self, contact_id: str, phone_number: str, message_text: str,
                            is_registered: bool, conversation_state: Optional[Dict]) -> str:
         """Enruta el mensaje al flujo apropiado."""
-        
+
         # Si hay un flujo activo, continuar con él
         if conversation_state:
             logger.info(f"[MANAGER] Procesando flujo activo")
             return await self._process_active_flow(contact_id, conversation_state, message_text)
-        
+
         # Si no hay flujo activo, determinar qué hacer
         if is_registered:
             logger.info(f"[MANAGER] Usuario registrado - manejando intención")
@@ -143,25 +143,26 @@ class ConversationManager:
             state_data = conversation_state.get("_doc", conversation_state)
             active_flow = state_data.get("flow")
             flow_state = state_data.get("state", {})
-            
+
             logger.info(f"[MANAGER] Procesando flujo activo '{active_flow}' para contacto {contact_id}")
             logger.info(f"[MANAGER] Estado del flujo: {flow_state}")
-            
+
             # Obtener el flujo correspondiente
             flow_handler = self.flows.get(active_flow)
             if not flow_handler:
+                # Aquí debe llamar al detector de intenciones para saber a que flujo debe ir
                 logger.warning(f"[MANAGER] Flujo desconocido: {active_flow}")
                 await self.boki_api.clear_conversation_state(contact_id)
                 return "Lo siento, algo salió mal. ¿En qué puedo ayudarte?"
-            
+
             # Procesar mensaje en el flujo
             new_state, response, is_completed = await flow_handler.process_message(
                 flow_state, message_text, contact_id
             )
-            
+
             logger.info(f"[MANAGER] Resultado del flujo - Completado: {is_completed}")
             logger.info(f"[MANAGER] Nuevo estado: {new_state}")
-            
+
             # Actualizar estado
             if is_completed:
                 logger.info(f"[MANAGER] Limpiando estado completado")
@@ -173,9 +174,9 @@ class ConversationManager:
                 logger.info(f"[MANAGER] Estado guardado: {success}")
                 if not success:
                     logger.warning(f"[MANAGER] No se pudo guardar estado para contacto {contact_id}")
-            
+
             return response
-            
+
         except Exception as e:
             logger.error(f"[MANAGER] Error procesando flujo activo: {e}", exc_info=True)
             await self.boki_api.clear_conversation_state(contact_id)
@@ -186,7 +187,7 @@ class ConversationManager:
         try:
             intent = self.intent_detector.detect_intent(message_text)
             logger.debug(f"[MANAGER] Intención detectada para usuario registrado: {intent}")
-            
+
             if intent == Intent.FAQ:
                 return await self._start_flow("faq", contact_id, phone_number, message_text)
             elif intent == Intent.APPOINTMENT:
@@ -203,7 +204,7 @@ class ConversationManager:
                     "💬 Finalizar conversación\n\n"
                     "Solo dime qué necesitas."
                 )
-                
+
         except Exception as e:
             logger.error(f"[MANAGER] Error manejando usuario registrado: {e}")
             return "¿En qué puedo ayudarte?"
@@ -212,25 +213,25 @@ class ConversationManager:
         """Inicia el flujo de registro para usuarios no registrados."""
         try:
             initial_state = {"step": "waiting_id", "data": {"phone": phone_number}}
-            
+
             logger.info(f"[MANAGER] Iniciando flujo de registro con estado: {initial_state}")
-            
+
             success = await self.boki_api.save_conversation_state(contact_id, "registration", initial_state)
-            
+
             logger.info(f"[MANAGER] Estado de registro guardado: {success}")
-            
+
             if not success:
                 logger.error(f"[MANAGER] No se pudo iniciar flujo de registro para {contact_id}")
                 return "Hay un problema técnico. Intenta de nuevo más tarde."
-            
+
             logger.info(f"[MANAGER] Flujo de registro iniciado para contacto {contact_id}")
-            
+
             return (
                 "¡Hola! 👋 Parece que eres nuevo aquí.\n\n"
                 "Para poder ayudarte mejor, necesito que te registres.\n\n"
                 "Por favor, proporciona tu número de documento de identidad:"
             )
-            
+
         except Exception as e:
             logger.error(f"[MANAGER] Error iniciando flujo de registro: {e}", exc_info=True)
             return "Hubo un error. Intenta de nuevo más tarde."
@@ -242,21 +243,21 @@ class ConversationManager:
             if not flow_handler:
                 logger.error(f"[MANAGER] Flujo no encontrado: {flow_name}")
                 return "Lo siento, no puedo procesar esa solicitud ahora."
-            
+
             # Procesar mensaje inicial en el flujo
             new_state, response, is_completed = await flow_handler.process_message(
                 {}, message_text, contact_id
             )
-            
+
             # Guardar estado si el flujo no se completó inmediatamente
             if not is_completed and new_state:
                 success = await self.boki_api.save_conversation_state(contact_id, flow_name, new_state)
                 if not success:
                     logger.warning(f"[MANAGER] No se pudo guardar estado inicial para flujo {flow_name}")
-            
+
             logger.info(f"[MANAGER] Flujo '{flow_name}' iniciado para contacto {contact_id}")
             return response
-            
+
         except Exception as e:
             logger.error(f"[MANAGER] Error iniciando flujo {flow_name}: {e}")
             return "Hubo un error procesando tu solicitud."

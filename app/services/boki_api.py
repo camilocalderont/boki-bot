@@ -23,12 +23,12 @@ class BokiApi:
             self.base_url = f"{settings.API_URL}:{settings.API_PORT}/api/v{settings.API_VERSION}"
         else:
             self.base_url = f"{settings.API_URL}/api/v{settings.API_VERSION}"
-        
+
         self.headers = {
             "Content-Type": "application/json",
             "x-api-token": settings.API_TOKEN
         }
-        
+
         # Cliente HTTP reutilizable con configuración optimizada
         self.client = httpx.AsyncClient(
             timeout=httpx.Timeout(10.0, connect=5.0),
@@ -41,13 +41,13 @@ class BokiApi:
         try:
             full_url = url if url.startswith('http') else f"{self.base_url}/{url.lstrip('/')}"
             logger.debug(f"[API] {method} {full_url}")
-            
+
             response = await self.client.request(method, full_url, **kwargs)
             logger.debug(f"[API] {method} {full_url} -> {response.status_code}")
-            
+
             if response.status_code >= 400:
                 logger.error(f"[API] Error {response.status_code}: {response.text}")
-            
+
             return response
         except httpx.TimeoutException:
             logger.error(f"[API] Timeout en {method} {url}")
@@ -64,7 +64,7 @@ class BokiApi:
             # Usar el endpoint correcto: GET /message-history/whatsapp/{messageId}
             url = f"message-history/whatsapp/{message_id}"
             response = await self._make_request("GET", url)
-            
+
             if response.status_code == 200:
                 result = response.json().get("data")
                 is_processed = result is not None
@@ -76,7 +76,7 @@ class BokiApi:
             else:
                 logger.warning(f"[API] Error verificando mensaje procesado: {response.status_code}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"[API] Error verificando mensaje procesado {message_id}: {e}")
             return False
@@ -85,14 +85,9 @@ class BokiApi:
         """Registra un mensaje entrante."""
         try:
             # Asegurar contexto mínimo
-            if not flow_context:
+            if not flow_context or (not flow_context.get("flow") and not flow_context.get("step")):
                 flow_context = {"flow": "general", "step": "initial"}
-            
-            # Asegurar que el contexto tenga los campos requeridos
-            if not flow_context.get("flow"):
-                flow_context["flow"] = "general"
-            if not flow_context.get("step"):
-                flow_context["step"] = "initial"
+
 
             # Usar la estructura correcta del endpoint POST /message-history
             payload = {
@@ -105,12 +100,12 @@ class BokiApi:
                 },
                 "flowContext": flow_context
             }
-            
+
             logger.debug(f"[API] Registrando mensaje entrante: {payload}")
-            
+
             url = "message-history"
             response = await self._make_request("POST", url, json=payload)
-            
+
             if response.status_code in [200, 201]:
                 logger.info(f"[API] Mensaje entrante registrado: {message_id}")
                 return True
@@ -120,7 +115,7 @@ class BokiApi:
             else:
                 logger.error(f"[API] Error registrando mensaje entrante: {response.status_code} - {response.text}")
                 return False
-            
+
         except Exception as e:
             logger.error(f"[API] Error registrando mensaje entrante {message_id}: {e}")
             return False
@@ -131,7 +126,7 @@ class BokiApi:
             # Asegurar contexto mínimo
             if not flow_context:
                 flow_context = {"flow": "general", "step": "response"}
-            
+
             # Asegurar que el contexto tenga los campos requeridos
             if not flow_context.get("flow"):
                 flow_context["flow"] = "general"
@@ -149,16 +144,16 @@ class BokiApi:
                 },
                 "flowContext": flow_context
             }
-            
+
             # Agregar waMessageId si está disponible
             if wa_message_id:
                 payload["waMessageId"] = wa_message_id
-            
+
             logger.debug(f"[API] Registrando mensaje saliente: {payload}")
-            
+
             url = "message-history"
             response = await self._make_request("POST", url, json=payload)
-            
+
             if response.status_code in [200, 201]:
                 logger.info(f"[API] Mensaje saliente registrado: {message_id}")
                 return True
@@ -168,7 +163,7 @@ class BokiApi:
             else:
                 logger.error(f"[API] Error registrando mensaje saliente: {response.status_code} - {response.text}")
                 return False
-            
+
         except Exception as e:
             logger.error(f"[API] Error registrando mensaje saliente {message_id}: {e}")
             return False
@@ -181,20 +176,20 @@ class BokiApi:
             # Intentar obtener contacto existente
             url = f"contacts/phone/{phone_number}"
             response = await self._make_request("GET", url)
-            
+
             if response.status_code == 200:
                 contact_data = response.json().get("data", {})
                 logger.debug(f"[API] Contacto encontrado: {contact_data.get('_id')}")
                 return contact_data
-            
+
             # Si no existe, crear nuevo
             payload = {"phone": phone_number}
             if client_id:
                 payload["clientId"] = client_id
-                
+
             url = "contacts"
             response = await self._make_request("POST", url, json=payload)
-            
+
             if response.status_code in [200, 201]:
                 contact_data = response.json().get("data", {})
                 logger.info(f"[API] Contacto creado: {contact_data.get('_id')}")
@@ -212,7 +207,7 @@ class BokiApi:
             else:
                 logger.error(f"[API] Error creando contacto: {response.status_code} - {response.text}")
                 return {}
-                
+
         except Exception as e:
             logger.error(f"[API] Error en get_or_create_contact: {e}")
             return {}
@@ -224,7 +219,7 @@ class BokiApi:
         try:
             url = f"conversation-states/contact/{contact_id}"
             response = await self._make_request("GET", url)
-            
+
             if response.status_code == 200:
                 state_data = response.json().get("data")
                 logger.debug(f"[API] Estado obtenido para contacto {contact_id}: {state_data}")
@@ -235,7 +230,7 @@ class BokiApi:
             else:
                 logger.warning(f"[API] Error obteniendo estado: {response.status_code}")
                 return None
-                
+
         except Exception as e:
             logger.error(f"[API] Error obteniendo estado de conversación: {e}")
             return None
@@ -245,25 +240,25 @@ class BokiApi:
         try:
             # Primero limpiar estado existente
             await self.clear_conversation_state(contact_id)
-            
+
             payload = {
                 "contactId": contact_id,
                 "flow": flow,
                 "state": state
             }
-            
+
             logger.debug(f"[API] Guardando estado: {payload}")
-            
+
             url = "conversation-states"
             response = await self._make_request("POST", url, json=payload)
-            
+
             if response.status_code in [200, 201]:
                 logger.debug(f"[API] Estado guardado para contacto {contact_id} en flujo {flow}")
                 return True
             else:
                 logger.error(f"[API] Error guardando estado: {response.status_code} - {response.text}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"[API] Error guardando estado de conversación: {e}")
             return False
@@ -273,14 +268,14 @@ class BokiApi:
         try:
             url = f"conversation-states/contact/{contact_id}"
             response = await self._make_request("DELETE", url)
-            
+
             if response.status_code in [200, 204, 404]:  # 404 es OK, ya no existe
                 logger.debug(f"[API] Estado eliminado para contacto {contact_id}")
                 return True
             else:
                 logger.warning(f"[API] Error eliminando estado: {response.status_code}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"[API] Error eliminando estado: {e}")
             return False
@@ -292,7 +287,7 @@ class BokiApi:
         try:
             url = f"clients/cellphone/{phone}"
             response = await self._make_request("GET", url)
-            
+
             if response.status_code == 200:
                 client_data = response.json().get("data")
                 logger.debug(f"[API] Cliente encontrado para teléfono {phone}")
@@ -303,7 +298,7 @@ class BokiApi:
             else:
                 logger.warning(f"[API] Error buscando cliente: {response.status_code}")
                 return None
-                
+
         except Exception as e:
             logger.error(f"[API] Error buscando cliente por teléfono: {e}")
             return None
@@ -313,7 +308,7 @@ class BokiApi:
         try:
             url = "clients"
             response = await self._make_request("POST", url, json=client_data)
-            
+
             if response.status_code in [200, 201]:
                 created_client = response.json().get("data")
                 logger.info(f"[API] Cliente creado: {created_client.get('Id')}")
@@ -321,7 +316,7 @@ class BokiApi:
             else:
                 logger.error(f"[API] Error creando cliente: {response.status_code} - {response.text}")
                 return None
-                
+
         except Exception as e:
             logger.error(f"[API] Error creando cliente: {e}")
             return None
