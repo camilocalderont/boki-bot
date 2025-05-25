@@ -57,7 +57,6 @@ class RegistrationFlow(BaseFlow):
             VcIdentificationNumber = schema.VcIdentificationNumber  # Usar el valor validado y limpio
 
         except ValidationError as e:
-            logger.warning(f"[REGISTRO] Error de validación: {e}")
             return (
                 {"step": "waiting_id", "data": data},
                 e.errors()[0]['msg'],  # Mensaje de error del schema
@@ -88,7 +87,6 @@ class RegistrationFlow(BaseFlow):
             VcFirstName = schema.VcFirstName  # Usar el valor validado y limpio
 
         except ValidationError as e:
-            logger.warning(f"[REGISTRO] Nombre inválido: {VcFirstName}")
             return (
                 {"step": "waiting_name", "data": data},
                 e.errors()[0]['msg'],  # Mensaje de error del schema

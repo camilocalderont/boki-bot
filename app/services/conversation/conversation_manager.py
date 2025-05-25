@@ -2,12 +2,14 @@
 import logging
 import uuid
 from typing import Optional, Dict, Any
-from app.services.intent_detection.detector import Intent, IntentDetector
+from app.services.intent_detection.detector import Intent, EnhancedIntentDetector
 from app.services.boki_api import BokiApi
 from app.services.conversation.flows.registration_flow import RegistrationFlow
 from app.services.conversation.flows.faq_flow import FAQFlow
 from app.services.conversation.flows.appointment_flow import AppointmentFlow
 from app.services.conversation.flows.end_conversation_flow import EndConversationFlow
+from app.services.conversation.flows.support_flow import SupportFlow
+from app.services.conversation.unknown_handler import UnknownIntentHandler
 
 logger = logging.getLogger(__name__)
 
@@ -18,15 +20,17 @@ class ConversationManager:
     """
 
     def __init__(self):
-        self.intent_detector = IntentDetector()
+        self.intent_detector = EnhancedIntentDetector()
         self.boki_api = BokiApi()
+        self.unknown_handler = UnknownIntentHandler()
 
         # Inicializar flujos de conversación
         self.flows = {
             "registration": RegistrationFlow(),
             "faq": FAQFlow(),
             "appointment": AppointmentFlow(),
-            "end_conversation": EndConversationFlow()
+            "end_conversation": EndConversationFlow(),
+            "support": SupportFlow()
         }
 
     async def process_message(self, phone_number: str, message_text: str, message_id: Optional[str] = None) -> Optional[str]:
@@ -194,16 +198,11 @@ class ConversationManager:
                 return await self._start_flow("appointment", contact_id, phone_number, message_text)
             elif intent == Intent.END_CONVERSATION:
                 return await self._start_flow("end_conversation", contact_id, phone_number, message_text)
+            elif intent == Intent.SUPPORT:
+                return await self._start_flow("support", contact_id, phone_number, message_text)
             else:
-                # Intención no clara, dar opciones
-                return (
-                    "¡Hola! ¿En qué puedo ayudarte hoy?\n\n"
-                    "Puedo ayudarte con:\n"
-                    "📋 Preguntas frecuentes\n"
-                    "📅 Agendar una cita\n"
-                    "💬 Finalizar conversación\n\n"
-                    "Solo dime qué necesitas."
-                )
+                # 🎯 Usar el handler inteligente de UNKNOWN
+                return self.unknown_handler.handle_unknown_intent(message_text, contact_id)
 
         except Exception as e:
             logger.error(f"[MANAGER] Error manejando usuario registrado: {e}")

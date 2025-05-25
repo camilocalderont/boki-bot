@@ -24,7 +24,7 @@ async def verify_webhook(
     if hub_mode == "subscribe" and hub_verify_token == settings.VERIFY_TOKEN:
         logger.info("[WEBHOOK] Verificación exitosa")
         return PlainTextResponse(content=hub_challenge, status_code=200)
-    
+
     logger.warning(f"[WEBHOOK] Verificación fallida - mode: {hub_mode}, token: {hub_verify_token}")
     raise HTTPException(status_code=403, detail="Verification failed")
 
@@ -35,18 +35,18 @@ async def receive_update(payload: WebhookPayload):
         # Intentar extraer el mensaje
         try:
             change = payload.entry[0].changes[0]
-            
+
             # Verificar si es un webhook de estado de mensaje
             if hasattr(change.value, 'statuses') and change.value.statuses:
                 return await _handle_status_update(change.value.statuses)
-            
+
             # Verificar si hay mensajes
             if not hasattr(change.value, 'messages') or not change.value.messages:
                 logger.debug("[WEBHOOK] Webhook sin mensajes, ignorando")
                 return {"status": "ignored", "reason": "no_messages"}
-            
+
             message = change.value.messages[0]
-            
+
         except (IndexError, AttributeError) as e:
             logger.debug(f"[WEBHOOK] Estructura de payload inesperada: {e}")
             return {"status": "ignored", "reason": "invalid_structure"}
@@ -77,8 +77,8 @@ async def receive_update(payload: WebhookPayload):
 
         # Procesar el mensaje a través del gestor de conversaciones
         response_text = await conversation_manager.process_message(
-            phone_number=from_number, 
-            message_text=message_text, 
+            phone_number=from_number,
+            message_text=message_text,
             message_id=message_id
         )
 
@@ -87,24 +87,24 @@ async def receive_update(payload: WebhookPayload):
             try:
                 whatsapp_client = WhatsAppClient()
                 wa_response = await whatsapp_client.send_text(
-                    to=from_number, 
+                    to=from_number,
                     text=response_text,
                     reply_to=message_id  # Responder al mensaje original
                 )
-                
+
                 # Extraer el ID del mensaje enviado para logging futuro
                 sent_message_id = None
                 if wa_response and wa_response.get("messages"):
                     sent_message_id = wa_response["messages"][0].get("id")
                     logger.debug(f"[WEBHOOK] Respuesta enviada con WhatsApp ID: {sent_message_id}")
-                
+
                 logger.info(f"[WEBHOOK] Respuesta enviada exitosamente a {from_number}")
                 return {
-                    "status": "processed", 
+                    "status": "processed",
                     "message_id": message_id,
                     "sent_message_id": sent_message_id
                 }
-                
+
             except WhatsAppAPIError as exc:
                 logger.error(f"[WEBHOOK] Error de WhatsApp API enviando a {from_number}: {exc}")
                 raise HTTPException(
@@ -134,22 +134,22 @@ async def _handle_status_update(statuses: list):
     """
     try:
         logger.debug(f"[WEBHOOK] Actualizaciones de estado recibidas: {len(statuses)} estados")
-        
+
         for status_update in statuses:
             message_id = status_update.get("id")
             status_value = status_update.get("status")
             timestamp = status_update.get("timestamp")
-            
+
             logger.debug(f"[WEBHOOK] Estado del mensaje {message_id}: {status_value}")
-            
+
             # Aquí podrías integrar con el sistema de estados que creamos
             # Por ejemplo, llamar a la API para actualizar el estado:
             # await conversation_manager.boki_api.update_message_status_by_wa_id(
             #     message_id, {"deliveryStatus": status_value}
             # )
-        
+
         return {"status": "status_received", "count": len(statuses)}
-        
+
     except Exception as e:
         logger.error(f"[WEBHOOK] Error procesando actualizaciones de estado: {e}")
         return {"status": "status_error"}
