@@ -90,7 +90,6 @@ class ConversationManager:
                 is_registered=is_registered,
                 conversation_state=conversation_state
             )
-            logger.info(f"[MANAGER] Respuesta generada: {response[:100]}..." if response else "No hay respuesta")
 
             # 7. Registrar respuesta
             if response and message_id:
@@ -189,6 +188,11 @@ class ConversationManager:
     async def _handle_registered_user(self, contact_id: str, phone_number: str, message_text: str) -> str:
         """Maneja mensajes de usuarios registrados basado en intención."""
         try:
+            # Verificar si el mensaje parece ser un ID de botón de un flujo activo
+            if self._is_button_id(message_text):
+                logger.info(f"[MANAGER] Detectado posible ID de botón: {message_text}")
+                return await self._handle_button_without_state(contact_id, message_text)
+            
             intent = self.intent_detector.detect_intent(message_text)
             logger.debug(f"[MANAGER] Intención detectada para usuario registrado: {intent}")
 
@@ -207,6 +211,93 @@ class ConversationManager:
         except Exception as e:
             logger.error(f"[MANAGER] Error manejando usuario registrado: {e}")
             return "¿En qué puedo ayudarte?"
+
+    def _is_button_id(self, message: str) -> bool:
+        """Detecta si un mensaje parece ser un ID de botón."""
+        # Patrones comunes de IDs de botones
+        button_patterns = [
+            r'^cat_id_\d+$',      # cat_id_1, cat_id_2, etc.
+            r'^srv_id_\d+$',      # srv_id_1, srv_id_2, etc.
+            r'^prof_id_\d+$',     # prof_id_1, prof_id_2, etc.
+            r'^date_\d+$',        # date_1, date_2, etc.
+            r'^time_\d+$',        # time_1, time_2, etc.
+            r'^confirm_(yes|no)$', # confirm_yes, confirm_no
+            r'^date_more$',       # date_more
+            r'^date_back$',       # date_back
+        ]
+        
+        import re
+        for pattern in button_patterns:
+            if re.match(pattern, message.strip()):
+                return True
+        return False
+
+    async def _handle_button_without_state(self, contact_id: str, button_id: str) -> str:
+        """Maneja un ID de botón cuando no hay estado de conversación guardado."""
+        try:
+            logger.info(f"[MANAGER] Manejando botón sin estado: {button_id}")
+            
+            # Determinar el tipo de botón y el flujo apropiado
+            if button_id.startswith('cat_id_'):
+                # Es una selección de categoría - podemos reconstruir el contexto
+                logger.info(f"[MANAGER] Detectado botón de categoría, reconstruyendo contexto")
+                
+                # Extraer el ID de la categoría del botón
+                try:
+                    category_id = int(button_id.replace('cat_id_', ''))
+                    logger.info(f"[MANAGER] ID de categoría extraído: {category_id}")
+                    
+                    # Iniciar flujo de appointment y procesar la selección de categoría
+                    flow_handler = self.flows.get("appointment")
+                    if flow_handler:
+                        # Simular el estado inicial del flujo
+                        initial_state, initial_response, _ = await flow_handler.process_message({}, "agendar", contact_id)
+                        
+                        if initial_state and initial_state.get("step") == "waiting_category":
+                            # Ahora procesar la selección de categoría
+                            new_state, response, is_completed = await flow_handler.process_message(
+                                initial_state, button_id, contact_id
+                            )
+                            
+                            # Guardar el nuevo estado si no se completó
+                            if not is_completed and new_state:
+                                success = await self.boki_api.save_conversation_state(contact_id, "appointment", new_state)
+                                logger.info(f"[MANAGER] Estado reconstruido guardado: {success}")
+                            
+                            return response
+                        
+                except (ValueError, Exception) as e:
+                    logger.error(f"[MANAGER] Error reconstruyendo contexto de categoría: {e}")
+                
+                # Si falla la reconstrucción, reiniciar flujo
+                return await self._start_flow("appointment", contact_id, "", "agendar")
+            
+            elif button_id.startswith('srv_id_'):
+                # Es una selección de servicio - más complejo de reconstruir
+                logger.info(f"[MANAGER] Detectado botón de servicio sin contexto")
+                return ("Lo siento, parece que se perdió el contexto de la conversación. "
+                       "Por favor, vuelve a iniciar el proceso escribiendo 'agendar'.")
+            
+            elif button_id.startswith('prof_id_'):
+                # Es una selección de profesional
+                logger.info(f"[MANAGER] Detectado botón de profesional sin contexto")
+                return ("Lo siento, parece que se perdió el contexto de la conversación. "
+                       "Por favor, vuelve a iniciar el proceso escribiendo 'agendar'.")
+            
+            elif button_id.startswith(('date_', 'time_', 'confirm_')):
+                # Son pasos avanzados del flujo
+                logger.info(f"[MANAGER] Detectado botón de paso avanzado sin contexto")
+                return ("Lo siento, parece que se perdió el contexto de la conversación. "
+                       "Por favor, vuelve a iniciar el proceso escribiendo 'agendar'.")
+            
+            else:
+                # ID de botón no reconocido
+                logger.warning(f"[MANAGER] ID de botón no reconocido: {button_id}")
+                return self.unknown_handler.handle_unknown_intent(button_id, contact_id)
+                
+        except Exception as e:
+            logger.error(f"[MANAGER] Error manejando botón sin estado: {e}")
+            return "Hubo un error. Por favor, intenta nuevamente."
 
     async def _start_registration_flow(self, contact_id: str, phone_number: str) -> str:
         """Inicia el flujo de registro para usuarios no registrados."""
@@ -248,11 +339,14 @@ class ConversationManager:
                 {}, message_text, contact_id
             )
 
-            # Guardar estado si el flujo no se completó inmediatamente
+            # Intentar guardar estado si el flujo no se completó inmediatamente
             if not is_completed and new_state:
                 success = await self.boki_api.save_conversation_state(contact_id, flow_name, new_state)
                 if not success:
                     logger.warning(f"[MANAGER] No se pudo guardar estado inicial para flujo {flow_name}")
+                    # Continuar sin guardar estado - el flujo puede funcionar sin persistencia
+                else:
+                    logger.info(f"[MANAGER] Estado guardado exitosamente para flujo {flow_name}")
 
             logger.info(f"[MANAGER] Flujo '{flow_name}' iniciado para contacto {contact_id}")
             return response

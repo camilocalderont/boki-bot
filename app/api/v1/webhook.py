@@ -52,6 +52,7 @@ async def receive_update(payload: WebhookPayload):
             return {"status": "ignored", "reason": "invalid_structure"}
 
         # Extraer información del mensaje
+        # Extraer información del mensaje
         from_number = message.from_
         message_id = message.id
         message_type = getattr(message, 'type', 'unknown')
@@ -60,8 +61,25 @@ async def receive_update(payload: WebhookPayload):
 
         # Extraer el contenido según el tipo de mensaje
         message_text = ""
+
         if message_type == "text" and message.text:
             message_text = message.text.get("body", "")
+        elif message_type == "interactive" and message.interactive:
+            # Usar el modelo de Pydantic actualizado
+            interactive = message.interactive
+            
+            logger.debug(f"[WEBHOOK] Datos interactivos completos: {interactive}")
+            
+            if interactive.type == "button_reply" and interactive.button_reply:
+                message_text = interactive.button_reply.id
+                logger.info(f"[WEBHOOK] ID de botón extraído: '{message_text}' (título: '{interactive.button_reply.title}')")
+            elif interactive.type == "list_reply" and interactive.list_reply:
+                message_text = interactive.list_reply.id
+                logger.info(f"[WEBHOOK] ID de lista extraído: '{message_text}' (título: '{interactive.list_reply.title}')")
+            else:
+                logger.warning(f"[WEBHOOK] Tipo interactivo no reconocido: {interactive.type}")
+                logger.debug(f"[WEBHOOK] Datos del interactive: {interactive}")
+                message_text = "interactive_unknown"
         elif message_type in ["image", "audio", "document", "video"]:
             # Para otros tipos de mensajes, usar un texto predeterminado
             message_text = f"[Se recibió un {message_type}]"
@@ -86,10 +104,12 @@ async def receive_update(payload: WebhookPayload):
         if response_text:
             try:
                 whatsapp_client = WhatsAppClient()
-                wa_response = await whatsapp_client.send_text(
+                
+                # Usar el método unificado que detecta automáticamente el tipo
+                wa_response = await whatsapp_client.send_message(
                     to=from_number,
-                    text=response_text,
-                    reply_to=message_id  # Responder al mensaje original
+                    content=response_text,  # Puede ser string o dict de botones
+                    reply_to=message_id
                 )
 
                 # Extraer el ID del mensaje enviado para logging futuro
@@ -125,7 +145,7 @@ async def receive_update(payload: WebhookPayload):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno del servidor"
         )
-
+                                 
 # --- Función auxiliar para manejar actualizaciones de estado ---------------
 async def _handle_status_update(statuses: list):
     """

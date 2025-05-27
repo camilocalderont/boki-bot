@@ -133,6 +133,19 @@ class BokiApi:
             if not flow_context.get("step"):
                 flow_context["step"] = "response"
 
+            # Convertir contenido a texto simple si es un objeto interactivo
+            text_content = content
+            if isinstance(content, dict):
+                # Si es un mensaje interactivo, extraer el texto del body
+                if content.get("type") == "interactive":
+                    interactive = content.get("interactive", {})
+                    if "body" in interactive and "text" in interactive["body"]:
+                        text_content = interactive["body"]["text"]
+                    else:
+                        text_content = "[Mensaje interactivo]"
+                else:
+                    text_content = str(content)
+
             # Usar la estructura correcta del endpoint POST /message-history
             payload = {
                 "contactId": contact_id,
@@ -140,7 +153,7 @@ class BokiApi:
                 "direction": "outbound",  # Requerido
                 "content": {
                     "type": "text",
-                    "text": content
+                    "text": text_content  # Solo texto simple
                 },
                 "flowContext": flow_context
             }
@@ -236,15 +249,14 @@ class BokiApi:
             return None
 
     async def save_conversation_state(self, contact_id: str, flow: str, state: Dict) -> bool:
-        """Guarda el estado de conversación de forma simplificada."""
+        """Guarda el estado de conversación."""
         try:
-            # Primero limpiar estado existente
-            await self.clear_conversation_state(contact_id)
-
+            # Usar exactamente la estructura que espera el backend
             payload = {
                 "contactId": contact_id,
                 "flow": flow,
                 "state": state
+                # expiresAt es opcional, no lo incluimos por ahora
             }
 
             logger.debug(f"[API] Guardando estado: {payload}")
@@ -321,6 +333,124 @@ class BokiApi:
             logger.error(f"[API] Error creando cliente: {e}")
             return None
 
+    # ==================== GESTIÓN DE CITAS ====================
+    
+    async def get_category_services(self) -> Optional[list]:
+        """Obtiene todas las categorías de servicios disponibles."""
+        try:
+            url = "category-services"
+            response = await self._make_request("GET", url)
+            
+            if response.status_code == 200:
+                categories = response.json().get("data", [])
+                logger.debug(f"[API] Categorías obtenidas: {len(categories)} encontradas")
+                return categories
+            else:
+                logger.error(f"[API] Error obteniendo categorías: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"[API] Error obteniendo categorías de servicios: {e}")
+            return None
+    
+    async def get_services_by_category(self, category_id: int) -> Optional[list]:
+        """Obtiene servicios filtrados por categoría."""
+        try:
+            url = f"services/category/{category_id}"
+            response = await self._make_request("GET", url)
+            
+            if response.status_code == 200:
+                services = response.json().get("data", [])
+                logger.debug(f"[API] Servicios por categoría {category_id}: {len(services)} encontrados")
+                return services
+            else:
+                logger.error(f"[API] Error obteniendo servicios por categoría: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"[API] Error obteniendo servicios por categoría {category_id}: {e}")
+            return None
+    
+    async def get_professionals_by_service(self, service_id: int) -> Optional[list]:
+        """Obtiene profesionales asociados a un servicio."""
+        try:
+            url = f"professional/service/{service_id}"
+            response = await self._make_request("GET", url)
+            
+            if response.status_code == 200:
+                professionals = response.json().get("data", [])
+                logger.debug(f"[API] Profesionales por servicio {service_id}: {len(professionals)} encontrados")
+                return professionals
+            else:
+                logger.error(f"[API] Error obteniendo profesionales: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"[API] Error obteniendo profesionales por servicio {service_id}: {e}")
+            return None
+    
+    async def get_general_availability(self, professional_id: int, service_id: int, days_ahead: int = 30) -> Optional[list]:
+        """Obtiene disponibilidad general de un profesional para un servicio."""
+        try:
+            url = f"professional/{professional_id}/general-availability"
+            params = {
+                "serviceId": service_id,
+                "daysAhead": days_ahead
+            }
+            response = await self._make_request("GET", url, params=params)
+            
+            if response.status_code == 200:
+                availability = response.json().get("data", [])
+                logger.debug(f"[API] Disponibilidad general obtenida: {len(availability)} fechas")
+                return availability
+            else:
+                logger.error(f"[API] Error obteniendo disponibilidad general: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"[API] Error obteniendo disponibilidad general: {e}")
+            return None
+    
+    async def get_available_slots(self, professional_id: int, service_id: int, date: str) -> Optional[list]:
+        """Obtiene slots disponibles para una fecha específica."""
+        try:
+            url = f"professional/{professional_id}/available-slots"
+            params = {
+                "serviceId": service_id,
+                "date": date
+            }
+            response = await self._make_request("GET", url, params=params)
+            
+            if response.status_code == 200:
+                slots = response.json().get("data", [])
+                logger.debug(f"[API] Slots disponibles para {date}: {len(slots)} encontrados")
+                return slots
+            else:
+                logger.error(f"[API] Error obteniendo slots disponibles: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"[API] Error obteniendo slots disponibles: {e}")
+            return None
+    
+    async def create_appointment(self, appointment_data: Dict) -> Optional[Dict]:
+        """Crea una nueva cita."""
+        try:
+            url = "appointments"
+            response = await self._make_request("POST", url, json=appointment_data)
+            
+            if response.status_code in [200, 201]:
+                appointment = response.json().get("data")
+                logger.info(f"[API] Cita creada exitosamente: {appointment.get('id')}")
+                return appointment
+            else:
+                logger.error(f"[API] Error creando cita: {response.status_code} - {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"[API] Error creando cita: {e}")
+            return None
+    
     # ==================== GESTIÓN DE RECURSOS ====================
 
     async def close(self):
