@@ -128,7 +128,7 @@ class AppointmentsApi(BaseClient):
             logger.error(f"[APPOINTMENTS] Error obteniendo disponibilidad general: {e}")
             return None
 
-    async def get_available_slots(self, professional_id: int, service_id: int, date: str) -> Optional[List[Dict]]:
+    async def get_available_slots(self, professional_id: int, service_id: int, date: str) -> Optional[Dict]:
         """
         Obtiene slots disponibles para una fecha específica.
         
@@ -138,7 +138,8 @@ class AppointmentsApi(BaseClient):
             date: Fecha en formato ISO (2025-05-27)
             
         Returns:
-            List[Dict]: Lista de slots disponibles o None si hay error
+            Dict: Diccionario con slots organizados por período o None si hay error
+            Estructura: {"mañana": [...], "tarde": [...], "noche": [...]}
         """
         try:
             url = f"professional/{professional_id}/available-slots"
@@ -149,9 +150,19 @@ class AppointmentsApi(BaseClient):
             response = await self._make_request("GET", url, params=params)
             
             if response.status_code == 200:
-                slots = response.json().get("data", [])
-                logger.debug(f"[APPOINTMENTS] Slots disponibles para {date}: {len(slots)} encontrados")
-                return slots
+                response_data = response.json()
+                slots_data = response_data.get("data", {})
+                
+                # Contar total de slots disponibles para logging
+                total_slots = 0
+                for period in ["mañana", "tarde", "noche"]:
+                    period_slots = slots_data.get(period, [])
+                    total_slots += len(period_slots)
+                
+                logger.debug(f"[APPOINTMENTS] Slots disponibles para {date}: {total_slots} encontrados")
+                logger.debug(f"[APPOINTMENTS] Distribución: mañana={len(slots_data.get('mañana', []))}, tarde={len(slots_data.get('tarde', []))}, noche={len(slots_data.get('noche', []))}")
+                
+                return slots_data
             else:
                 logger.error(f"[APPOINTMENTS] Error obteniendo slots disponibles: {response.status_code}")
                 return None
@@ -185,4 +196,35 @@ class AppointmentsApi(BaseClient):
                 
         except Exception as e:
             logger.error(f"[APPOINTMENTS] Error creando cita: {e}")
+            return None
+
+    async def get_client_appointments(self, client_id: int, only_pending: bool = True) -> Optional[List[Dict]]:
+        """
+        Obtiene las citas de un cliente específico.
+        
+        Args:
+            client_id: ID del cliente
+            only_pending: Si solo mostrar citas pendientes (por defecto True)
+            
+        Returns:
+            List[Dict]: Lista de citas del cliente o None si hay error
+        """
+        try:
+            url = f"appointments/client/{client_id}"
+            params = {}
+            if only_pending:
+                params["status"] = "pending"
+                
+            response = await self._make_request("GET", url, params=params)
+            
+            if response.status_code == 200:
+                appointments = response.json().get("data", [])
+                logger.debug(f"[APPOINTMENTS] Citas obtenidas para cliente {client_id}: {len(appointments)} encontradas")
+                return appointments
+            else:
+                logger.error(f"[APPOINTMENTS] Error obteniendo citas del cliente: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"[APPOINTMENTS] Error obteniendo citas del cliente {client_id}: {e}")
             return None

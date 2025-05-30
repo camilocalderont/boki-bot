@@ -39,11 +39,39 @@ class AppointmentValidators:
     def validate_availability(availability: List[Dict]) -> bool:
         """Valida que haya disponibilidad."""
         return bool(availability)
+    
+    @staticmethod
+    def validate_slots_data(slots_data: Optional[Dict]) -> bool:
+        """
+        Valida que los datos de slots tengan la estructura correcta y contengan al menos un horario.
+        
+        Args:
+            slots_data: Diccionario con estructura {"mañana": [...], "tarde": [...], "noche": [...]}
+            
+        Returns:
+            bool: True si la estructura es válida y hay al menos un horario disponible
+        """
+        if not slots_data or not isinstance(slots_data, dict):
+            return False
+        
+        # Verificar que al menos un período tenga horarios
+        periods = ["mañana", "tarde", "noche"]
+        for period in periods:
+            period_slots = slots_data.get(period, [])
+            if period_slots and len(period_slots) > 0:
+                return True
+        
+        return False
 
     @staticmethod
-    def validate_slots(slots: List[Dict]) -> bool:
-        """Valida que haya slots disponibles."""
-        return bool(slots)
+    def validate_slots(slots):
+        """Mantener compatibilidad con validador anterior si es necesario."""
+        if isinstance(slots, dict):
+            # Nueva estructura de períodos
+            return AppointmentValidators.validate_slots_data(slots)
+        else:
+            # Estructura anterior (lista directa)
+            return slots is not None and len(slots) > 0
 
     @staticmethod
     def validate_appointment_data(data: Dict) -> tuple[bool, List[str]]:

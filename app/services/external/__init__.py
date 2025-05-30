@@ -41,6 +41,10 @@ class BokiApi:
         """Obtiene o crea un contacto."""
         return await self._contacts.get_or_create_contact(phone_number, client_id)
 
+    async def get_contact_by_id(self, contact_id: str):
+        """Obtiene un contacto por su ID."""
+        return await self._contacts.get_contact_by_id(contact_id)
+
     async def get_client_by_phone(self, phone: str):
         """Busca un cliente por número de teléfono."""
         return await self._contacts.get_client_by_phone(phone)
@@ -88,6 +92,10 @@ class BokiApi:
     async def create_appointment(self, appointment_data):
         """Crea una nueva cita."""
         return await self._appointments.create_appointment(appointment_data)
+
+    async def get_client_appointments(self, client_id: int, only_pending: bool = True):
+        """Obtiene las citas de un cliente específico."""
+        return await self._appointments.get_client_appointments(client_id, only_pending)
 
     # ==================== GESTIÓN DE RECURSOS ====================
 

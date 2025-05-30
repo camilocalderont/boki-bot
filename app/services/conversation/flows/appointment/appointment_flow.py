@@ -36,6 +36,7 @@ class AppointmentFlow(BaseFlow):
                 "waiting_service": lambda: self.steps.process_service_selection(message, data),
                 "waiting_professional": lambda: self.steps.process_professional_selection(message, data),
                 "waiting_date": lambda: self.steps.process_date_selection(message, data),
+                "waiting_period": lambda: self.steps.process_period_selection(message, data),
                 "waiting_time": lambda: self.steps.process_time_selection(message, data),
                 "waiting_confirmation": lambda: self.steps.process_confirmation(message, data, contact_id)
             }

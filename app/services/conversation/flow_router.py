@@ -121,7 +121,7 @@ class FlowRouter:
                 return "Lo siento, no puedo procesar esa solicitud ahora."
 
             new_state, response, is_completed = await flow_handler.process_message(
-                {}, message_text, contact_id
+                {}, message_text, contact_id, 
             )
 
             if not is_completed and new_state:

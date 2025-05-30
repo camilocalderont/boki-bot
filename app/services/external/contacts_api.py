@@ -147,3 +147,32 @@ class ContactsApi(BaseClient):
         except Exception as e:
             logger.error(f"[CONTACTS] Error creando cliente: {e}")
             return None
+
+    async def get_contact_by_id(self, contact_id: str) -> Optional[Dict]:
+        """
+        Obtiene un contacto por su ID.
+        
+        Args:
+            contact_id: ID del contacto
+            
+        Returns:
+            Dict: Datos del contacto o None si no existe
+        """
+        try:
+            url = f"contacts/{contact_id}"
+            response = await self._make_request("GET", url)
+
+            if response.status_code == 200:
+                contact_data = response.json().get("data", {})
+                logger.debug(f"[CONTACTS] Contacto encontrado por ID: {contact_data.get('_id')}")
+                return contact_data
+            elif response.status_code == 404:
+                logger.debug(f"[CONTACTS] Contacto no encontrado para ID {contact_id}")
+                return None
+            else:
+                logger.warning(f"[CONTACTS] Error obteniendo contacto por ID: {response.status_code}")
+                return None
+
+        except Exception as e:
+            logger.error(f"[CONTACTS] Error obteniendo contacto por ID {contact_id}: {e}")
+            return None

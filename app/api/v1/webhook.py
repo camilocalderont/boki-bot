@@ -217,7 +217,7 @@ async def _handle_status_update(statuses: list) -> Dict[str, Any]:
     try:
         for status_update in statuses:
             message_id = status_update.get("id")
-            status_value = status_update.get("status")
+            status_value = status_update.get("state")
             timestamp = status_update.get("timestamp")
 
             logger.debug(f"Estado actualizado - ID: {message_id}, Estado: {status_value}")
