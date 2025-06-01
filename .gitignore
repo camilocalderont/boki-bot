@@ -68,3 +68,7 @@ temp/
 # Archivos de sistema
 .DS_Store
 Thumbs.db
+
+
+#Archivos de LLM
+models/

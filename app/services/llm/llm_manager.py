@@ -1,5 +1,6 @@
 from typing import Optional
-from .ollama_provider import OllamaProvider
+#from .ollama_provider import OllamaProvider
+from .llamacpp_provider import LlamaCppProvider
 from .message_history import MessageHistory
 from .base_llm import LLMResponse, LLMError
 import logging
@@ -13,28 +14,28 @@ class LLMManager:
 
     def __init__(self, boki_api):
         self.boki_api = boki_api
-        self.ollama = None
+        self.llm_provider = None
         self.message_history = MessageHistory(boki_api)
 
     async def initialize(self):
         """Inicializa conexión con Ollama."""
         try:
-            self.ollama = OllamaProvider()
-            await self.ollama.__aenter__()
-            
+            self.llm_provider = LlamaCppProvider()
+            await self.llm_provider.__aenter__()
+
             # Verificar que los modelos estén disponibles
-            if not await self.ollama.is_available():
-                raise LLMError("Ollama no está disponible")
-            
+            if not await self.llm_provider.is_available():
+                raise LLMError("Provider no está disponible")
+
             logger.info("[LLM_MANAGER] Inicializado exitosamente")
-            
+
         except Exception as e:
             logger.error(f"[LLM_MANAGER] Error en inicialización: {e}")
             raise
 
     async def detect_intent_with_context(
-        self, 
-        message: str, 
+        self,
+        message: str,
         contact_id: str
     ) -> LLMResponse:
         """
@@ -44,16 +45,16 @@ class LLMManager:
             # Obtener contexto del historial
             recent_messages = await self.message_history.get_recent_messages(contact_id, 5)
             context = self.message_history.format_conversation_context(recent_messages)
-            
+
             logger.debug(f"[LLM_MANAGER] Detectando intención para: {message[:50]}...")
-            
+
             # Detectar intención con TinyLlama
-            response = await self.ollama.detect_intent(message, context)
-            
+            response = await self.llm_provider.detect_intent(message, context)
+
             logger.info(f"[LLM_MANAGER] Intención detectada: {response.text}")
-            
+
             return response
-            
+
         except Exception as e:
             logger.error(f"[LLM_MANAGER] Error detectando intención: {e}")
             # Fallback: crear respuesta manual
@@ -77,28 +78,28 @@ class LLMManager:
         try:
             # Obtener historial completo
             recent_messages = await self.message_history.get_recent_messages(contact_id, 10)
-            
+
             # Determinar contexto temporal
             same_day = self.message_history.was_conversation_today(recent_messages)
-            
+
             # Crear resumen de la última conversación
             last_conversation = self.message_history.get_last_conversation_summary(recent_messages)
-            
+
             logger.debug(f"[LLM_MANAGER] Generando bienvenida para {user_name}, same_day: {same_day}")
-            
+
             # Generar saludo con Mistral
-            response = await self.ollama.generate_welcome_message(
+            response = await self.llm_provider.generate_welcome_message(
                 user_name=user_name,
                 last_conversation=last_conversation,
                 has_active_flow=has_active_flow,
                 flow_type=flow_type,
                 same_day=same_day
             )
-            
+
             logger.info(f"[LLM_MANAGER] Bienvenida generada para {user_name}")
-            
+
             return response
-            
+
         except Exception as e:
             logger.error(f"[LLM_MANAGER] Error generando bienvenida: {e}")
             # Fallback: saludo genérico
@@ -123,10 +124,10 @@ class LLMManager:
             # Obtener contexto
             recent_messages = await self.message_history.get_recent_messages(contact_id, 3)
             context = self.message_history.format_conversation_context(recent_messages)
-            
+
             # Crear prompt para decisión de flujo
             flows_text = ", ".join(available_flows)
-            
+
             prompt = f"""Eres un asistente de una clínica de belleza. Basándote en el mensaje del usuario, decide a qué flujo enviarlo.
 
 Contexto de conversación reciente:
@@ -140,17 +141,17 @@ Responde SOLO con el nombre del flujo más apropiado, o "general" si no hay uno 
 
 Flujo recomendado:"""
 
-            response = await self.ollama.generate_response(
+            response = await self.llm_provider.generate_response(
                 prompt=prompt,
-                model_name=self.ollama.conversation_model,
+                model_name=self.llm_provider.conversation_model,
                 max_tokens=20,
                 temperature=0.3  # Baja temperatura para decisión
             )
-            
+
             logger.info(f"[LLM_MANAGER] Flujo recomendado: {response.text}")
-            
+
             return response
-            
+
         except Exception as e:
             logger.error(f"[LLM_MANAGER] Error decidiendo flujo: {e}")
             return LLMResponse(
@@ -173,10 +174,10 @@ Flujo recomendado:"""
             # Obtener contexto del historial
             recent_messages = await self.message_history.get_recent_messages(contact_id, 5)
             context = self.message_history.format_conversation_context(recent_messages)
-            
+
             # Resumir el estado del flujo
             flow_summary = self._summarize_flow_state(flow_type, flow_data)
-            
+
             prompt = f"""Analiza si el usuario quiere continuar con su proceso pendiente.
 
 Contexto de conversación:
@@ -192,17 +193,17 @@ Responde SOLO: "SI" o "NO"
 
 Respuesta:"""
 
-            response = await self.ollama.generate_response(
+            response = await self.llm_provider.generate_response(
                 prompt=prompt,
-                model_name=self.ollama.conversation_model,
+                model_name=self.llm_provider.conversation_model,
                 max_tokens=5,
                 temperature=0.2
             )
-            
+
             logger.info(f"[LLM_MANAGER] ¿Continuar flujo? {response.text}")
-            
+
             return response
-            
+
         except Exception as e:
             logger.error(f"[LLM_MANAGER] Error evaluando continuación: {e}")
             return LLMResponse(
@@ -232,7 +233,7 @@ Respuesta:"""
                 return "Confirmando cita"
             else:
                 return f"En proceso de agendamiento (paso: {step})"
-        
+
         elif flow_type == "registration":
             step = flow_data.get("step", "inicial")
             if step == "waiting_id":
@@ -241,7 +242,7 @@ Respuesta:"""
                 return "Registrando nombre"
             else:
                 return f"En proceso de registro (paso: {step})"
-        
+
         else:
             return f"En proceso de {flow_type}"
 
@@ -252,20 +253,20 @@ Respuesta:"""
         try:
             messages = await self.message_history.get_recent_messages(contact_id, 20)
             stats = self.message_history.get_conversation_stats(messages)
-            
+
             # Detectar temas frecuentes
             appointment_keywords = ["cita", "agendar", "turno", "reserva"]
             has_appointment_history = self.message_history.has_keywords_in_history(
                 messages, appointment_keywords
             )
-            
+
             return {
                 "stats": stats,
                 "has_appointment_history": has_appointment_history,
                 "last_conversation_today": self.message_history.was_conversation_today(messages),
                 "conversation_summary": self.message_history.get_last_conversation_summary(messages)
             }
-            
+
         except Exception as e:
             logger.error(f"[LLM_MANAGER] Error obteniendo insights: {e}")
             return {}
@@ -273,8 +274,12 @@ Respuesta:"""
     async def close(self):
         """Cierra recursos."""
         try:
-            if self.ollama:
-                await self.ollama.__aexit__(None, None, None)
+            if self.llm_provider:
+                await self.llm_provider.__aexit__(None, None, None)
             logger.info("[LLM_MANAGER] Recursos cerrados")
         except Exception as e:
             logger.error(f"[LLM_MANAGER] Error cerrando recursos: {e}")
+
+    def is_available(self) -> bool:
+        """Verifica si el sistema LLM está disponible."""
+        return self.llm_provider is not None and self.llm_provider.is_available()

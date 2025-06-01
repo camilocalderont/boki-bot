@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from .base_client import BaseClient
 
 logger = logging.getLogger(__name__)
@@ -13,10 +13,10 @@ class MessagesApi(BaseClient):
     async def is_message_processed(self, message_id: str) -> bool:
         """
         Verifica si un mensaje ya fue procesado.
-        
+
         Args:
             message_id: ID del mensaje de WhatsApp
-            
+
         Returns:
             bool: True si ya fue procesado
         """
@@ -41,21 +41,21 @@ class MessagesApi(BaseClient):
             return False
 
     async def log_incoming_message(
-        self, 
-        contact_id: str, 
-        message_id: str, 
-        content: str, 
+        self,
+        contact_id: str,
+        message_id: str,
+        content: str,
         flow_context: Optional[Dict] = None
     ) -> bool:
         """
         Registra un mensaje entrante.
-        
+
         Args:
             contact_id: ID del contacto
             message_id: ID del mensaje
             content: Contenido del mensaje
             flow_context: Contexto del flujo de conversación
-            
+
         Returns:
             bool: True si se registró exitosamente
         """
@@ -94,23 +94,23 @@ class MessagesApi(BaseClient):
             return False
 
     async def log_outgoing_message(
-        self, 
-        contact_id: str, 
-        message_id: str, 
-        content: str, 
-        flow_context: Optional[Dict] = None, 
+        self,
+        contact_id: str,
+        message_id: str,
+        content: str,
+        flow_context: Optional[Dict] = None,
         wa_message_id: Optional[str] = None
     ) -> bool:
         """
         Registra un mensaje saliente.
-        
+
         Args:
             contact_id: ID del contacto
             message_id: ID del mensaje
             content: Contenido del mensaje
             flow_context: Contexto del flujo de conversación
             wa_message_id: ID del mensaje en WhatsApp
-            
+
         Returns:
             bool: True si se registró exitosamente
         """
@@ -164,16 +164,16 @@ class MessagesApi(BaseClient):
     def _extract_text_content(self, content) -> str:
         """
         Extrae contenido de texto de diferentes tipos de mensaje.
-        
+
         Args:
             content: Contenido del mensaje (string o dict)
-            
+
         Returns:
             str: Texto extraído
         """
         if isinstance(content, str):
             return content
-            
+
         if isinstance(content, dict):
             # Si es un mensaje interactivo, extraer el texto del body
             if content.get("type") == "interactive":
@@ -184,5 +184,25 @@ class MessagesApi(BaseClient):
                     return "[Mensaje interactivo]"
             else:
                 return str(content)
-        
+
         return str(content)
+
+
+    async def get_conversation_history(self, contact_id: str, limit: int = 20) -> Optional[List[Dict]]:
+        """
+        Obtiene el historial de la conversación.
+        """
+        try:
+            url = f"message-history/conversation/{contact_id}?limit={limit}&sort=-timestamp"
+            response = await self._make_request("GET", url)
+
+            if response.status_code == 200:
+                history_data = response.json().get("data")
+                logger.debug(f"[CONVERSATIONS] Historial obtenido para contacto {contact_id}: {history_data}")
+                return history_data
+            else:
+                logger.warning(f"[CONVERSATIONS] Error obteniendo historial: {response.status_code}")
+                return None
+        except Exception as e:
+            logger.error(f"[CONVERSATIONS] Error obteniendo historial: {e}")
+            return None

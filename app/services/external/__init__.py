@@ -3,6 +3,7 @@ Módulo de clientes externos para la API de Boki.
 Proporciona una interfaz unificada para mantener compatibilidad.
 """
 
+from typing import Dict, List, Optional
 from .base_client import BokiApiError
 from .messages_api import MessagesApi
 from .contacts_api import ContactsApi
@@ -34,6 +35,10 @@ class BokiApi:
     async def log_outgoing_message(self, contact_id: str, message_id: str, content: str, flow_context=None, wa_message_id=None) -> bool:
         """Registra un mensaje saliente."""
         return await self._messages.log_outgoing_message(contact_id, message_id, content, flow_context, wa_message_id)
+
+    async def get_conversation_history(self, contact_id: str, limit: int = 20) -> Optional[List[Dict]]:
+        """Obtiene el historial de la conversación."""
+        return await self._messages.get_conversation_history(contact_id, limit)
 
     # ==================== MÉTODOS DE CONTACTOS ====================
 
