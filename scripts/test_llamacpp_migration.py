@@ -21,9 +21,9 @@ async def test_migration():
 
     # Test 1: Importaciones
     try:
-        from app.services.llm.llamacpp_provider import LlamaCppProvider
-        from app.services.llm.model_downloader import ModelDownloader
-        from app.services.llm.llm_manager import LLMManager
+        from app.services.llm_anterior.llamacpp_provider import LlamaCppProvider
+        from app.services.llm_anterior.model_downloader import ModelDownloader
+        from app.services.llm_anterior.llm_manager import LLMManager
         print("✅ Importaciones correctas")
     except ImportError as e:
         print(f"❌ Error de importación: {e}")

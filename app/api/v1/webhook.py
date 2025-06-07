@@ -44,10 +44,6 @@ async def receive_update(payload: WebhookPayload):
         if not message_data:
             return {"status": "ignored", "reason": "no_valid_message"}
 
-        # 2. Manejar actualizaciones de estado si es el caso
-        if message_data.get("type") == "status_update":
-            return await _handle_status_update(message_data["statuses"])
-
         # 3. Procesar mensaje de chat
         return await _process_chat_message(message_data)
 
@@ -70,6 +66,8 @@ def _extract_message_from_payload(payload: WebhookPayload) -> Optional[Dict[str,
     Responsabilidad: Parsing y validación de estructura.
     """
     try:
+        logger.debug(f"📥 Payload recibido: {payload}")
+        
         change = payload.entry[0].changes[0]
 
         # Verificar si es actualización de estado
@@ -85,16 +83,19 @@ def _extract_message_from_payload(payload: WebhookPayload) -> Optional[Dict[str,
 
         message = change.value.messages[0]
         
-        return {
+        result = {
             "type": "chat_message",
             "message": message,
             "from_number": message.from_,
             "message_id": message.id,
             "message_type": getattr(message, 'type', 'unknown')
         }
+        
+        return result
 
     except (IndexError, AttributeError) as e:
-        logger.warning(f"Error extrayendo mensaje del payload: {e}")
+        logger.error(f"❌ Error extrayendo mensaje del payload: {e}")
+        logger.error(f"📋 Payload completo: {payload}")
         return None
 
 
@@ -103,24 +104,35 @@ def _extract_message_content(message_data: Dict[str, Any]) -> Optional[str]:
     Extrae el contenido del mensaje según su tipo.
     Responsabilidad: Parsing de contenido específico por tipo.
     """
-    message = message_data["message"]
-    message_type = message_data["message_type"]
-    
-    # Mensaje de texto
-    if message_type == "text" and message.text:
-        return message.text.get("body", "")
+    try:
+        # Verificar que tengamos la estructura correcta
+        if "message" not in message_data:
+            logger.warning(f"message_data no tiene 'message': {message_data}")
+            return None
+            
+        message = message_data["message"]
+        message_type = message_data.get("message_type", "unknown")
+        
+        # Mensaje de texto
+        if message_type == "text" and hasattr(message, 'text') and message.text:
+            return message.text.get("body", "")
 
-    # Mensaje interactivo (botones/listas)
-    elif message_type == "interactive" and message.interactive:
-        return _extract_interactive_content(message.interactive)
+        # Mensaje interactivo (botones/listas)
+        elif message_type == "interactive" and hasattr(message, 'interactive') and message.interactive:
+            return _extract_interactive_content(message.interactive)
 
-    # Mensajes multimedia
-    elif message_type in ["image", "audio", "document", "video"]:
-        return f"[Se recibió un {message_type}]"
+        # Mensajes multimedia
+        elif message_type in ["image", "audio", "document", "video"]:
+            return f"[Se recibió un {message_type}]"
 
-    # Tipo no soportado
-    else:
-        logger.warning(f"Tipo de mensaje no soportado: {message_type}")
+        # Tipo no soportado
+        else:
+            logger.warning(f"Tipo de mensaje no soportado: {message_type}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error extrayendo contenido del mensaje: {e}")
+        logger.error(f"message_data: {message_data}")
         return None
 
 
@@ -204,31 +216,3 @@ async def _send_whatsapp_response(to: str, content: Any, reply_to: str) -> Dict[
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="WhatsApp API rejected the message"
         ) from exc
-
-# ============================================================================
-# FUNCIONES PRIVADAS - MANEJO DE ESTADOS
-# ============================================================================
-
-async def _handle_status_update(statuses: list) -> Dict[str, Any]:
-    """
-    Maneja actualizaciones de estado de mensajes desde WhatsApp.
-    Responsabilidad: Procesamiento de estados de delivery.
-    """
-    try:
-        for status_update in statuses:
-            message_id = status_update.get("id")
-            status_value = status_update.get("state")
-            timestamp = status_update.get("timestamp")
-
-            logger.debug(f"Estado actualizado - ID: {message_id}, Estado: {status_value}")
-
-            # Aquí podrías integrar con el sistema de estados
-            # await conversation_manager.boki_api.update_message_status_by_wa_id(
-            #     message_id, {"deliveryStatus": status_value}
-            # )
-
-        return {"status": "status_received", "count": len(statuses)}
-
-    except Exception as e:
-        logger.error(f"Error procesando actualizaciones de estado: {e}")
-        return {"status": "status_error"}

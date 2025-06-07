@@ -9,6 +9,7 @@ from .messages_api import MessagesApi
 from .contacts_api import ContactsApi
 from .conversations_api import ConversationsApi
 from .appointments_api import AppointmentsApi
+from .llm_api import LLMAPIService
 
 class BokiApi:
     """
@@ -21,6 +22,7 @@ class BokiApi:
         self._contacts = ContactsApi()
         self._conversations = ConversationsApi()
         self._appointments = AppointmentsApi()
+        self._llm = LLMAPIService()
 
     # ==================== MÉTODOS DE MENSAJES ====================
 
@@ -102,6 +104,12 @@ class BokiApi:
         """Obtiene las citas de un cliente específico."""
         return await self._appointments.get_client_appointments(client_id, only_pending)
 
+    # ==================== MÉTODOS DE LLM ====================
+
+    async def get_company_agent_prompt(self, company_id: str, vc_agent_name: str):
+        """Obtiene el prompt del agente para una compañía específica."""
+        return await self._llm.get_company_agent_prompt(company_id, vc_agent_name)
+
     # ==================== GESTIÓN DE RECURSOS ====================
 
     async def close(self):
@@ -110,3 +118,4 @@ class BokiApi:
         await self._contacts.close()
         await self._conversations.close()
         await self._appointments.close()
+        await self._llm.close()

@@ -89,11 +89,11 @@ async def test_migration():
         if Path(path).exists():
             try:
                 if name == "model_downloader":
-                    from app.services.llm.model_downloader import ModelDownloader
+                    from app.services.llm_anterior.model_downloader import ModelDownloader
                 elif name == "llamacpp_provider":
-                    from app.services.llm.llamacpp_provider import LlamaCppProvider
+                    from app.services.llm_anterior.llamacpp_provider import LlamaCppProvider
                 elif name == "llm_manager":
-                    from app.services.llm.llm_manager import LLMManager
+                    from app.services.llm_anterior.llm_manager import LLMManager
                 print(f"✅ {name} funciona")
             except ImportError as e:
                 print(f"❌ Error con {name}: {e}")
