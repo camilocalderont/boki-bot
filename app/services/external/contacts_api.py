@@ -105,7 +105,7 @@ class ContactsApi(BaseClient):
             Dict: Datos del cliente o None si no existe
         """
         try:
-            url = f"clients/cellphone/{phone}"
+            url = f"clients/llm/cellphone/{phone}"
             response = await self._make_request("GET", url)
 
             if response.status_code == 200:

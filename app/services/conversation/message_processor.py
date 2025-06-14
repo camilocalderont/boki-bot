@@ -41,14 +41,14 @@ class MessageProcessor:
             is_registered = client is not None
 
             # 4. Obtener estado de conversación
-            conversation_state = await self.boki_api.get_conversation_state(contact_id)
+            # conversation_state = await self.boki_api.get_conversation_state(contact_id)
 
-            # 5. Registrar mensaje entrante
-            if message_id:
-                flow_context = self._extract_flow_context(conversation_state)
-                await self.boki_api.log_incoming_message(
-                    contact_id, message_id, message_text, flow_context
-                )
+            # # 5. Registrar mensaje entrante
+            # if message_id:
+            #     flow_context = self._extract_flow_context(conversation_state)
+            #     await self.boki_api.log_incoming_message(
+            #         contact_id, message_id, message_text, flow_context
+            #     )
 
             return {
                 "contact_id": contact_id,
@@ -56,7 +56,7 @@ class MessageProcessor:
                 "message_text": message_text,
                 "message_id": message_id,
                 "is_registered": is_registered,
-                "conversation_state": conversation_state,
+                # "conversation_state": conversation_state,
                 "is_duplicate": False,
                 "error": None
             }

@@ -53,22 +53,22 @@ class ConversationManager:
             logger.warning(f"⚠️ LLM no disponible, usando sistema determinístico: {e}")
             self.llm_system = None
 
-    async def process_message(self, phone_number: str, message_text: str, message_id: Optional[str] = None) -> Optional[str]:
+    async def process_message(self, phone_number: str, message_text: str, message_id: Optional[str] = None, number_id: Optional[str] = None) -> Optional[str]:
         """
         Procesa un mensaje entrante con estrategia híbrida: LLM + fallback.
         """
         # Intentar inicializar LLM si no se ha hecho (lazy loading)
         await self._init_llm_system()
 
-        # ESTRATEGIA: Probar LLM primero, fallback a sistema determinístico
-        if self.llm_system and self.llm_system.is_available():
-            # Usar nuevo sistema LLM
-            return await self._process_with_llm(phone_number, message_text, message_id)
-        else:
-            # Tu código actual sin cambios
-            return await self._process_original(phone_number, message_text, message_id)
+        # # ESTRATEGIA: Probar LLM primero, fallback a sistema determinístico
+        # if self.llm_system and self.llm_system.is_available():
+        #     # Usar nuevo sistema LLM
+        #     return await self._process_with_llm(phone_number, message_text, message_id, number_id)
+        # else:
+        #     # Tu código actual sin cambios
+        return await self._process_original(phone_number, message_text, message_id)
 
-    async def _process_with_llm(self, phone_number: str, message_text: str, message_id: Optional[str] = None) -> Optional[str]:
+    async def _process_with_llm(self, phone_number: str, message_text: str, message_id: Optional[str] = None, number_id: Optional[str] = None) -> Optional[str]:
         """
         Procesamiento mejorado con LLM.
         NUEVO: Usa LLM para detección de intenciones y respuestas naturales.
@@ -76,6 +76,8 @@ class ConversationManager:
         try:
             logger.info(f"🧠 Procesando con LLM: {phone_number}")
 
+            company_id = await self.boki_api.get_company_id(number_id)
+            
             # 1. Procesar mensaje entrante (lógica actual)
             message_data = await self.message_processor.process_incoming_message(
                 phone_number, message_text, message_id

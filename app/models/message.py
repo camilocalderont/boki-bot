@@ -34,6 +34,8 @@ class Status(BaseModel):
     recipient_id: Optional[str] = None
 
 class Value(BaseModel):
+    messaging_product: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
     messages: List[Message] = Field(default_factory=list)
     contacts: List[Contact] = Field(default_factory=list)
     statuses: List[Status] = Field(default_factory=list)  # Para estados de mensajes

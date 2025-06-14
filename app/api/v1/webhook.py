@@ -71,12 +71,17 @@ def _extract_message_from_payload(payload: WebhookPayload) -> Optional[Dict[str,
     """
     try:
         change = payload.entry[0].changes[0]
+        
+        number_id = None
+        if hasattr(change.value, 'metadata') and change.value.metadata:
+            number_id = change.value.metadata.get('phone_number_id')
 
         # Verificar si es actualización de estado
         if hasattr(change.value, 'statuses') and change.value.statuses:
             return {
                 "type": "status_update",
-                "statuses": change.value.statuses
+                "statuses": change.value.statuses,
+                "number_id": number_id
             }
 
         # Verificar si hay mensajes
@@ -90,7 +95,8 @@ def _extract_message_from_payload(payload: WebhookPayload) -> Optional[Dict[str,
             "message": message,
             "from_number": message.from_,
             "message_id": message.id,
-            "message_type": getattr(message, 'type', 'unknown')
+            "message_type": getattr(message, 'type', 'unknown'),
+            "number_id": number_id
         }
 
     except (IndexError, AttributeError) as e:
@@ -158,7 +164,8 @@ async def _process_chat_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
     response_text = await conversation_manager.process_message(
         phone_number=message_data["from_number"],
         message_text=message_text,
-        message_id=message_data["message_id"]
+        message_id=message_data["message_id"],
+        number_id=message_data["number_id"]
     )
 
     # Enviar respuesta si existe
