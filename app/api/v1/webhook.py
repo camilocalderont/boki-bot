@@ -84,12 +84,21 @@ def _extract_message_from_payload(payload: WebhookPayload) -> Optional[Dict[str,
             return None
 
         message = change.value.messages[0]
+
+        # Capturar el recipient_id (phone_number_id) para obtener company_id 
+        recipient_id = getattr(change.value.metadata, "phone_number_id", None)
+        
+        if not recipient_id:
+            logger.error("No se encontró phone_number_id en metadata - company_id es obligatorio")
+            return None
         
         return {
             "type": "chat_message",
             "message": message,
             "from_number": message.from_,
-            "message_id": message.id,
+            "message_id": message.id,     
+            "to_number_id": recipient_id,
+            "recipient_id": recipient_id, 
             "message_type": getattr(message, 'type', 'unknown')
         }
 
@@ -154,11 +163,11 @@ async def _process_chat_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
     if not message_text or not message_text.strip():
         return {"status": "ignored", "reason": "empty_message"}
 
-    # Procesar mensaje a través del conversation manager
     response_text = await conversation_manager.process_message(
         phone_number=message_data["from_number"],
         message_text=message_text,
-        message_id=message_data["message_id"]
+        message_id=message_data["message_id"],
+        recipient_id=message_data["recipient_id"] 
     )
 
     # Enviar respuesta si existe
@@ -216,9 +225,9 @@ async def _handle_status_update(statuses: list) -> Dict[str, Any]:
     """
     try:
         for status_update in statuses:
-            message_id = status_update.get("id")
-            status_value = status_update.get("state")
-            timestamp = status_update.get("timestamp")
+            message_id = status_update.id
+            status_value = status_update.status
+            timestamp = status_update.timestamp
 
             logger.debug(f"Estado actualizado - ID: {message_id}, Estado: {status_value}")
 

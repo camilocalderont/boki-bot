@@ -8,6 +8,7 @@ from .messages_api import MessagesApi
 from .contacts_api import ContactsApi
 from .conversations_api import ConversationsApi
 from .appointments_api import AppointmentsApi
+from .company_api import CompanyApiService
 
 class BokiApi:
     """
@@ -20,6 +21,7 @@ class BokiApi:
         self._contacts = ContactsApi()
         self._conversations = ConversationsApi()
         self._appointments = AppointmentsApi()
+        self._company = CompanyApiService()
 
     # ==================== MÉTODOS DE MENSAJES ====================
 
@@ -96,6 +98,10 @@ class BokiApi:
     async def get_client_appointments(self, client_id: int, only_pending: bool = True):
         """Obtiene las citas de un cliente específico."""
         return await self._appointments.get_client_appointments(client_id, only_pending)
+    
+    async def get_company_id(self, number_id: str) -> str:
+        """Obtiene el ID de la compañía para un número específico."""
+        return await self._company.get_company_id(number_id)
 
     # ==================== GESTIÓN DE RECURSOS ====================
 
@@ -105,3 +111,4 @@ class BokiApi:
         await self._contacts.close()
         await self._conversations.close()
         await self._appointments.close()
+        await self._company.close()

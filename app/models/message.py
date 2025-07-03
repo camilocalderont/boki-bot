@@ -33,10 +33,16 @@ class Status(BaseModel):
     timestamp: str
     recipient_id: Optional[str] = None
 
+class Metadata(BaseModel):
+    display_phone_number: Optional[str] = None
+    phone_number_id: Optional[str] = None
+
+
 class Value(BaseModel):
     messages: List[Message] = Field(default_factory=list)
     contacts: List[Contact] = Field(default_factory=list)
-    statuses: List[Status] = Field(default_factory=list)  # Para estados de mensajes
+    statuses: List[Status] = Field(default_factory=list)
+    metadata: Optional[Metadata] = None  # Para estados de mensajes
 
 class Change(BaseModel):
     value: Value

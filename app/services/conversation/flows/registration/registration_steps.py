@@ -93,6 +93,14 @@ class RegistrationSteps:
         try:
             logger.info(f"Iniciando creación de cliente con datos: {data}")
 
+            company_id = data.get("company_id")
+            if not company_id:
+                logger.error("Error crítico: company_id es obligatorio para crear cliente")
+                return await self._restart_registration(
+                    data.get("phone", ""), 
+                    "Error de configuración. Por favor contacta al soporte técnico."
+                )
+
             # Validar teléfono antes de crear el cliente
             phone = data.get("phone", "")
             is_valid, error_msg, cleaned_phone = RegistrationValidators.validate_phone(phone)
@@ -101,14 +109,14 @@ class RegistrationSteps:
                 logger.warning(f"Teléfono inválido durante creación: {phone}")
                 return await self._restart_registration(phone, error_msg)
 
-            # Preparar datos del cliente con valores validados
             client_data = {
                 "VcIdentificationNumber": data["VcIdentificationNumber"],
                 "VcPhone": cleaned_phone,
                 "VcFirstName": data["VcFirstName"],
+                "CompanyId": company_id 
             }
 
-            logger.info(f"Datos del cliente preparados: {client_data}")
+            logger.info(f"Datos del cliente preparados con company_id obligatorio: {client_data}")
 
             # Crear cliente a través de la API
             result = await self.boki_api.create_client(client_data)
@@ -116,7 +124,7 @@ class RegistrationSteps:
 
             if result:
                 client_id = result.get('Id', 'N/A')
-                logger.info(f"Cliente creado exitosamente: {client_id}")
+                logger.info(f"Cliente creado exitosamente: {client_id} para company: {company_id}")
                 
                 # Flujo completado exitosamente
                 return (
@@ -160,8 +168,11 @@ class RegistrationSteps:
         else:
             full_message = f"Hubo un error. {base_message}"
         
+        restart_data = {"phone": phone}
+        # Nota: El company_id se volverá a agregar cuando el FlowRouter procese el mensaje
+        
         return (
-            {"step": "waiting_id", "data": {"phone": phone}},
+            {"step": "waiting_id", "data": restart_data},
             full_message,
             False
         )

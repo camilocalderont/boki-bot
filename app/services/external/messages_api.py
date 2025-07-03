@@ -67,17 +67,13 @@ class MessagesApi(BaseClient):
             payload = {
                 "contactId": contact_id,
                 "messageId": message_id,
-                "direction": "inbound",
-                "content": {
-                    "type": "text",
-                    "text": content
-                },
+                "text": content,
                 "flowContext": flow_context
             }
 
             logger.debug(f"[MESSAGES] Registrando mensaje entrante: {payload}")
 
-            response = await self._make_request("POST", "message-history", json=payload)
+            response = await self._make_request("POST", "message-history/log/incoming", json=payload)
 
             if response.status_code in [200, 201]:
                 logger.info(f"[MESSAGES] Mensaje entrante registrado: {message_id}")
@@ -131,11 +127,7 @@ class MessagesApi(BaseClient):
             payload = {
                 "contactId": contact_id,
                 "messageId": message_id,
-                "direction": "outbound",
-                "content": {
-                    "type": "text",
-                    "text": text_content
-                },
+                "text": text_content,
                 "flowContext": flow_context
             }
 
@@ -145,7 +137,7 @@ class MessagesApi(BaseClient):
 
             logger.debug(f"[MESSAGES] Registrando mensaje saliente: {payload}")
 
-            response = await self._make_request("POST", "message-history", json=payload)
+            response = await self._make_request("POST", "message-history/log/outgoing", json=payload)
 
             if response.status_code in [200, 201]:
                 logger.info(f"[MESSAGES] Mensaje saliente registrado: {message_id}")

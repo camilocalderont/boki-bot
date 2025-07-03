@@ -55,7 +55,8 @@ class ConversationsApi(BaseClient):
             payload = {
                 "contactId": contact_id,
                 "flow": flow,
-                "state": state
+                "step": state.get("step"),
+                "data": state.get("data"),
             }
 
             logger.debug(f"[CONVERSATIONS] Guardando estado: {payload}")

@@ -36,13 +36,35 @@ class ConversationManager:
         self.button_handler = ButtonHandler(self.flows, self.boki_api)
         self.flow_router = FlowRouter(self.flows, self.boki_api)
 
-    async def process_message(self, phone_number: str, message_text: str, message_id: Optional[str] = None) -> Optional[str]:
+    async def process_message(self, phone_number: str, message_text: str, message_id: Optional[str] = None, recipient_id: Optional[str] = None) -> Optional[str]:
         """
         Procesa un mensaje entrante de forma simplificada.
         Responsabilidad única: orquestar el flujo general.
+        
+        Args:
+            phone_number: Número de teléfono del usuario
+            message_text: Texto del mensaje
+            message_id: ID del mensaje (opcional)
+            recipient_id: ID del recipient de WhatsApp para obtener company_id (obligatorio)
         """
         try:
             logger.info(f"Procesando mensaje de {phone_number}")
+
+            company_id = None
+            if recipient_id:
+                try:
+                    company_id = await self.boki_api.get_company_id(recipient_id)
+                    logger.info(f"Company ID obtenido exitosamente: {company_id} para recipient: {recipient_id}")
+                except Exception as e:
+                    logger.error(f"Error crítico: No se pudo obtener company_id para {recipient_id}: {e}")
+                    return "Lo siento, hay un problema de configuración. Por favor contacta al soporte técnico."
+            else:
+                logger.error("Error crítico: recipient_id es requerido para obtener company_id")
+                return "Lo siento, hay un problema técnico. Por favor intenta de nuevo más tarde."
+
+            if not company_id:
+                logger.error("Error crítico: company_id es obligatorio pero no se pudo obtener")
+                return "Lo siento, hay un problema de configuración. Por favor contacta al soporte técnico."
 
             # 1. Procesar mensaje entrante
             message_data = await self.message_processor.process_incoming_message(
@@ -70,7 +92,8 @@ class ConversationManager:
                     phone_number=message_data["phone_number"], 
                     message_text=message_data["message_text"],
                     is_registered=message_data["is_registered"],
-                    conversation_state=message_data["conversation_state"]
+                    conversation_state=message_data["conversation_state"],
+                    company_id=company_id  
                 )
 
             # 5. Registrar respuesta
@@ -82,6 +105,7 @@ class ConversationManager:
             return response
 
         except Exception as e:
+            logger.error(f"Error procesando mensaje: {e}", exc_info=True)
             return "Lo siento, hubo un error procesando tu mensaje. Por favor intenta de nuevo."
 
     def _get_error_response(self, error_type: str) -> str:
